@@ -37,26 +37,26 @@
 
 bool WorldSession::CanOpenMailBox(ObjectGuid guid)
 {
-    if (guid == _player->GetGUID())
-    {
-        if (!HasPermission(rbac::RBAC_PERM_COMMAND_MAILBOX))
-        {
-            LOG_WARN("cheat", "{} attempted to open mailbox by using a cheat.", _player->GetName());
-            return false;
-        }
-    }
-    else if (guid.IsGameObject())
-    {
-        if (!_player->GetGameObjectIfCanInteractWith(guid, GAMEOBJECT_TYPE_MAILBOX))
-            return false;
-    }
-    else if (guid.IsAnyTypeCreature())
-    {
-        if (!_player->GetNPCIfCanInteractWith(guid, UNIT_NPC_FLAG_MAILBOX))
-            return false;
-    }
-    else
-        return false;
+    // if (guid == _player->GetGUID())
+    // {
+    //     if (!HasPermission(rbac::RBAC_PERM_COMMAND_MAILBOX))
+    //     {
+    //         LOG_WARN("cheat", "{} attempted to open mailbox by using a cheat.", _player->GetName());
+    //         return false;
+    //     }
+    // }
+    // else if (guid.IsGameObject())
+    // {
+    //     if (!_player->GetGameObjectIfCanInteractWith(guid, GAMEOBJECT_TYPE_MAILBOX))
+    //         return false;
+    // }
+    // else if (guid.IsAnyTypeCreature())
+    // {
+    //     if (!_player->GetNPCIfCanInteractWith(guid, UNIT_NPC_FLAG_MAILBOX))
+    //         return false;
+    // }
+    // else
+    //     return false;
 
     return true;
 }
@@ -671,8 +671,8 @@ void WorldSession::HandleGetMailList(WorldPacket& recvData)
     ObjectGuid mailbox;
     recvData >> mailbox;
 
-    if (!CanOpenMailBox(mailbox))
-        return;
+    // if (!CanOpenMailBox(mailbox))
+    //     return;
 
     Player* player = _player;
 

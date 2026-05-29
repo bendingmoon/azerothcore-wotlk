@@ -498,7 +498,7 @@ void WorldSession::HandleLootRoll(WorldPacket& recvData)
     uint8  rollType;
     recvData >> guid;                  // guid of the item rolled
     recvData >> itemSlot;
-    recvData >> rollType;              // 0: pass, 1: need, 2: greed
+    recvData >> rollType;              // 0: pass, 1: need, 2: greed, 3:DISENCHANT
 
     Group* group = GetPlayer()->GetGroup();
     if (!group)
