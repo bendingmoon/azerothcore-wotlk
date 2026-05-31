@@ -527,6 +527,9 @@ void World::SetInitialWorldSettings()
     LOG_INFO("server.loading", "Loading Item Set Names...");                // must be after LoadItemPrototypes
     sObjectMgr->LoadItemSetNames();
 
+    LOG_INFO("server.loading", "Loading Item Tooltips...");
+    sObjectMgr->LoadItemTooltips();
+
     LOG_INFO("server.loading", "Loading Creature Model Based Info Data...");
     sObjectMgr->LoadCreatureModelInfo();
 
@@ -785,6 +788,12 @@ void World::SetInitialWorldSettings()
 
     LOG_INFO("server.loading", "Loading Vendors...");
     sObjectMgr->LoadVendors();                                   // must be after load CreatureTemplate and ItemTemplate
+
+    LOG_INFO("server.loading", "Loading AowowCreatures...");
+    sObjectMgr->LoadAowowCreatures();
+
+    LOG_INFO("server.loading", "Loading AowowCreatureSpawns...");
+    sObjectMgr->LoadAowowCreatureSpawns();
 
     LOG_INFO("server.loading", "Loading Waypoints...");
     sWaypointMgr->Load();

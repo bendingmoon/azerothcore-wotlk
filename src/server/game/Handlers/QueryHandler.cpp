@@ -479,3 +479,79 @@ void WorldSession::HandleQuestPOIQuery(WorldPacket& recvData)
 
     SendPacket(&data);
 }
+
+void WorldSession::HandleAowowCreatureAreaObjectQuery(WorldPacket& recvData)
+{
+    uint32 areaId;
+    recvData >> areaId;
+    uint32 type;
+    recvData >> type;
+    uint32 npcflag;
+    recvData >> npcflag;
+
+    if (npcflag > 1)
+    {
+        recvData.rfinish();
+        return;
+    }
+
+    const std::vector<AowowCreatureSpawn*>* spawns = sObjectMgr->GetAowowCreatureSpawnsByAreaAndType(areaId, type);
+    if (!spawns)
+    {
+        // 没有匹配的刷怪点，发送空响应
+        WorldPacket data(SMSG_MOBILE_CREATURE_QUERY_AOWOW_AREAOBJECT_RESPONSE, 4);
+        data << uint32(0);
+        SendPacket(&data);
+        return;
+    }
+    // 临时存储符合条件的生物信息
+    struct ResponseCreatureInfo
+    {
+        uint32 typeId;
+        float posX;
+        float posY;
+        uint8  minLevel;
+        uint8  maxLevel;
+        uint32 npcflag;
+        std::string  name_loc0;
+        std::string  name_loc4;
+        std::string  subname_loc4;
+    };
+    std::vector<ResponseCreatureInfo> results;
+    for (const AowowCreatureSpawn* spawn : *spawns)
+    {
+        uint16 creatureId = static_cast<uint16>(spawn->typeId);
+        AowowCreature const* aowowCreature = sObjectMgr->GetAowowCreature(creatureId);
+        if (aowowCreature){
+            // 根据 filterFlag 决定是否过滤掉 npcflag == 0 的生物
+            if (npcflag == 0 && aowowCreature->npcflag > 0) continue;
+            if (npcflag == 1 && aowowCreature->npcflag == 0) continue;
+            results.push_back({
+                spawn->typeId,
+                spawn->posX,
+                spawn->posY,
+                aowowCreature->minLevel,
+                aowowCreature->maxLevel,
+                aowowCreature->npcflag,
+                aowowCreature->name_loc0,
+                aowowCreature->name_loc4,
+                aowowCreature->subname_loc4
+            });
+        }
+    }
+    WorldPacket data(SMSG_MOBILE_CREATURE_QUERY_AOWOW_AREAOBJECT_RESPONSE, 4 + results.size() * (4+4+4+1+1+4 + 3*4 + 64*3));
+    data << uint32(results.size());
+    for (const auto& info : results)
+    {
+        data << uint32(info.typeId);
+        data << float(info.posX);
+        data << float(info.posY);
+        data << uint8(info.minLevel);
+        data << uint8(info.maxLevel);
+        data << uint32(info.npcflag);
+        data << info.name_loc0;
+        data << info.name_loc4;
+        data << info.subname_loc4;
+    }
+    SendPacket(&data);
+}

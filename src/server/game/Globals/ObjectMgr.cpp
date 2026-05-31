@@ -3985,6 +3985,48 @@ void ObjectMgr::LoadItemSetNames()
     LOG_INFO("server.loading", " ");
 }
 
+void ObjectMgr::LoadItemTooltips()
+{
+    uint32 oldMSTime = getMSTime();
+
+    _itemTooltipStore.clear(); // needed for reload case
+
+    //                                                  0        1            2           3          4           5              6            7           8          9
+    QueryResult result = WorldDatabase.Query("SELECT `itemId`, `tooltip`, `iconFileId`, `qulity`, `name`, `inventoryType`, `displayId`, `classType`, `subclass`, `sheath` FROM `ItemTooltip`");
+
+    if (!result)
+    {
+        LOG_WARN("server.loading", ">> Loaded 0 item tooltips. DB table `ItemTooltip` is empty.");
+        LOG_INFO("server.loading", " ");
+        return;
+    }
+
+    _itemTooltipStore.rehash(result->GetRowCount());
+    uint32 count = 0;
+
+    do
+    {
+        Field* fields = result->Fetch();
+
+        uint32 entry = fields[0].Get<uint32>();
+
+        ItemTooltip& data = _itemTooltipStore[entry];  
+        data.Tooltip = fields[1].Get<std::string>();
+        data.IconFileId = fields[2].Get<uint32>();
+        data.Qulity = fields[3].Get<uint32>();
+        data.Name = fields[4].Get<std::string>();
+        data.InventoryType = fields[5].Get<uint32>();
+        data.DisplayId = fields[6].Get<uint32>();
+        data.ClassType = fields[7].Get<uint32>();
+        data.Subclass = fields[8].Get<uint32>();
+        data.Sheath = fields[9].Get<uint32>();
+        ++count;
+    } while (result->NextRow());
+
+    LOG_INFO("server.loading", ">> Loaded {} Item Set Names in {} ms", count, GetMSTimeDiffToNow(oldMSTime));
+    LOG_INFO("server.loading", " ");
+}
+
 void ObjectMgr::LoadVehicleTemplateAccessories()
 {
     uint32 oldMSTime = getMSTime();
@@ -11176,4 +11218,98 @@ uint32 ObjectMgr::GetQuestMoneyReward(uint8 level, uint32 questMoneyDifficulty) 
     }
 
     return 0;
+}
+
+void ObjectMgr::LoadAowowCreatures()
+{
+    uint32 oldMSTime = getMSTime();
+
+    _aowowCreatureStore.clear(); // needed for reload case
+
+    //                                                0         1            2              3             4           5          6
+    QueryResult result = WorldDatabase.Query("SELECT `id`, `name_loc0`, `name_loc4`, `subname_loc4`, `minLevel`, `maxLevel`, `npcflag` FROM `aowow_creature`");
+
+    if (!result)
+    {
+        LOG_WARN("server.loading", ">> Loaded 0 item aowow_creature. DB table `aowow_creature` is empty.");
+        LOG_INFO("server.loading", " ");
+        return;
+    }
+
+    _aowowCreatureStore.rehash(result->GetRowCount());
+    uint32 count = 0;
+
+    do
+    {
+        Field* fields = result->Fetch();
+
+        uint16 entry = fields[0].Get<uint16>();
+
+        AowowCreature& data = _aowowCreatureStore[entry];  
+        data.name_loc0 = fields[1].Get<std::string>();
+        data.name_loc4 = fields[2].Get<std::string>();
+        data.subname_loc4 = fields[3].Get<std::string>();
+        data.minLevel = fields[4].Get<uint8>();
+        data.maxLevel = fields[5].Get<uint8>();
+        data.npcflag = fields[6].Get<uint32>();
+        ++count;
+    } while (result->NextRow());
+
+    LOG_INFO("server.loading", ">> Loaded {} aowow_creature in {} ms", count, GetMSTimeDiffToNow(oldMSTime));
+    LOG_INFO("server.loading", " ");
+}
+
+void ObjectMgr::LoadAowowCreatureSpawns()
+{
+    uint32 oldMSTime = getMSTime();
+
+    _aowowCreatureSpawnStore.clear(); // needed for reload case
+    _aowowCreatureSpawnIndex.clear();
+
+    //                                                0        1        2         3        4       5   
+    QueryResult result = WorldDatabase.Query("SELECT `guid`, `type`, `typeId`, `areaId`, `posX`, `posY` FROM `aowow_spawns`");
+
+    if (!result)
+    {
+        LOG_WARN("server.loading", ">> Loaded 0 aowow_spawns. DB table `aowow_spawns` is empty.");
+        LOG_INFO("server.loading", " ");
+        return;
+    }
+
+    _aowowCreatureSpawnStore.rehash(result->GetRowCount());
+    uint32 count = 0;
+
+    do
+    {
+        Field* fields = result->Fetch();
+
+        int16 entry = fields[0].Get<int16>();
+
+        AowowCreatureSpawn& data = _aowowCreatureSpawnStore[entry];  
+        data.type = fields[1].Get<uint32>();
+        data.typeId = fields[2].Get<uint32>();
+        data.areaId = fields[3].Get<uint32>();
+        data.posX = fields[4].Get<float>();
+        data.posY = fields[5].Get<float>();
+
+        // 构建索引：areaId -> type -> 指向该 spawn 的指针
+        _aowowCreatureSpawnIndex[data.areaId][data.type].push_back(&data);
+
+        ++count;
+    } while (result->NextRow());
+
+    LOG_INFO("server.loading", ">> Loaded {} aowow_spawns in {} ms", count, GetMSTimeDiffToNow(oldMSTime));
+    LOG_INFO("server.loading", " ");
+}
+
+const std::vector<AowowCreatureSpawn*>* ObjectMgr::GetAowowCreatureSpawnsByAreaAndType(uint32 areaId, uint32 type) const
+{
+    auto areaIt = _aowowCreatureSpawnIndex.find(areaId);
+    if (areaIt != _aowowCreatureSpawnIndex.end())
+    {
+        auto typeIt = areaIt->second.find(type);
+        if (typeIt != areaIt->second.end())
+            return &typeIt->second;  // 返回 vector 的指针
+    }
+    return nullptr;
 }

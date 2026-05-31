@@ -602,7 +602,7 @@ void WorldSocket::HandleAuthSessionCallback(std::shared_ptr<ClientAuthSession> a
 
     // Must be done before WorldSession is created
     bool wardenActive = sWorld->getBoolConfig(CONFIG_WARDEN_ENABLED);
-    if (wardenActive && account.OS != "Win" && account.OS != "OSX")
+    if (wardenActive && account.OS != "Win" && account.OS != "OSX" && account.OS != "App")
     {
         SendAuthResponseError(AUTH_REJECT);
         LOG_ERROR("network", "WorldSocket::HandleAuthSession: Client {} attempted to log in using invalid client OS ({}).", address, account.OS);

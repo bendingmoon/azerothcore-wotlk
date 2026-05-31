@@ -654,10 +654,12 @@ public:                                                 // opcodes handlers
     void Handle_Deprecated(WorldPacket& recvPacket);    // never used anymore by client
 
     void HandleCharEnumOpcode(WorldPacket& recvPacket);
+    void HandleMobileCharEnumOpcode(WorldPacket& recvPacket);
     void HandleCharDeleteOpcode(WorldPacket& recvPacket);
     void HandleCharCreateOpcode(WorldPacket& recvPacket);
     void HandlePlayerLoginOpcode(WorldPacket& recvPacket);
     void HandleCharEnum(PreparedQueryResult result);
+    void HandleMobileCharEnum(PreparedQueryResult result);
     void HandlePlayerLoginFromDB(LoginQueryHolder const& holder);
     void HandlePlayerLoginToCharInWorld(Player* pCurrChar);
     void HandlePlayerLoginToCharOutOfWorld(Player* pCurrChar);
@@ -897,12 +899,14 @@ public:                                                 // opcodes handlers
     void HandleDestroyItemOpcode(WorldPackets::Item::DestroyItem& packet);
     void HandleAutoEquipItemOpcode(WorldPackets::Item::AutoEquipItem& packet);
     void HandleItemQuerySingleOpcode(WorldPacket& recvPacket);
+    void HandleMobileItemQuerySingleOpcode(WorldPacket& recvPacket);
     void HandleSellItemOpcode(WorldPackets::Item::SellItem& packet);
     void HandleBuyItemInSlotOpcode(WorldPackets::Item::BuyItemInSlot& packet);
     void HandleBuyItemOpcode(WorldPackets::Item::BuyItem& packet);
     void HandleListInventoryOpcode(WorldPackets::Item::ListInventory& packet);
     void HandleAutoStoreBagItemOpcode(WorldPackets::Item::AutoStoreBagItem& packet);
     void HandleReadItem(WorldPackets::Item::ReadItem& packet);
+    void HandleBoostItem(WorldPacket& recvPacket);
     void HandleAutoEquipItemSlotOpcode(WorldPackets::Item::AutoEquipItemSlot& packet);
     void HandleSwapItem(WorldPackets::Item::SwapItem& packet);
     void HandleBuybackItem(WorldPackets::Item::BuybackItem& packet);
@@ -1163,6 +1167,7 @@ public:                                                 // opcodes handlers
     void HandleReadyForAccountDataTimes(WorldPacket& recvData);
     void HandleQueryQuestsCompleted(WorldPacket& recvData);
     void HandleQuestPOIQuery(WorldPacket& recvData);
+    void HandleAowowCreatureAreaObjectQuery(WorldPacket& recvData);
     void HandleEjectPassenger(WorldPacket& data);
     void HandleEnterPlayerVehicle(WorldPacket& data);
     void HandleUpdateProjectilePosition(WorldPacket& recvPacket);

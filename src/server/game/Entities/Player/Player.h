@@ -1125,7 +1125,7 @@ public:
     void RemovePlayerFlag(PlayerFlags flags) { RemoveFlag(PLAYER_FLAGS, flags); }
     void ReplaceAllPlayerFlags(PlayerFlags flags) { SetUInt32Value(PLAYER_FLAGS, flags); }
 
-    static bool BuildEnumData(PreparedQueryResult result, WorldPacket* data);
+    static bool BuildEnumData(PreparedQueryResult result, WorldPacket* data, bool isMobile);
 
     [[nodiscard]] bool IsClass(Classes playerClass, ClassContext context = CLASS_CONTEXT_NONE) const override;
 

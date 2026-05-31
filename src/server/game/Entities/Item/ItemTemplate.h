@@ -849,4 +849,17 @@ struct ItemSetNameLocale
     std::vector<std::string> Name;
 };
 
+struct ItemTooltip
+{
+    std::string Tooltip;
+    uint32 IconFileId;
+    uint32 Qulity;
+    std::string Name;
+    uint32 InventoryType;
+    uint32 DisplayId;
+    uint32 ClassType;
+    uint32 Subclass;
+    uint32 Sheath;
+};
+
 #endif

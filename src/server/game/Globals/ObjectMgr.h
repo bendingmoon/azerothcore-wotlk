@@ -796,6 +796,14 @@ public:
         return nullptr;
     }
 
+    ItemTooltip const* GetItemTooltip(uint32 itemId)
+    {
+        ItemTooltipContainer::iterator itr = _itemTooltipStore.find(itemId);
+        if (itr != _itemTooltipStore.end())
+            return &itr->second;
+        return nullptr;
+    }
+
     InstanceTemplate const* GetInstanceTemplate(uint32 mapId);
 
     [[nodiscard]] PetLevelInfo const* GetPetLevelInfo(uint32 creature_id, uint8 level) const;
@@ -1060,6 +1068,7 @@ public:
     void LoadItemTemplates();
     void LoadItemLocales();
     void LoadItemSetNames();
+    void LoadItemTooltips();
     void LoadItemSetNameLocales();
     void LoadQuestLocales();
     void LoadNpcTextLocales();
@@ -1116,6 +1125,9 @@ public:
     void LoadVendors();
     void LoadTrainers();
     void LoadCreatureDefaultTrainers();
+
+    void LoadAowowCreatures();
+    void LoadAowowCreatureSpawns();
 
     std::string GeneratePetName(uint32 entry);
     std::string GeneratePetNameLocale(uint32 entry, LocaleConstant locale);
@@ -1523,6 +1535,15 @@ public:
     }
 
     [[nodiscard]] uint32 GetQuestMoneyReward(uint8 level, uint32 questMoneyDifficulty) const;
+
+    const std::vector<AowowCreatureSpawn*>* GetAowowCreatureSpawnsByAreaAndType(uint32 areaId, uint32 type) const;
+    AowowCreature const* GetAowowCreature(uint16 id)
+    {
+        AowowCreatureContainer::iterator itr = _aowowCreatureStore.find(id);
+        if (itr != _aowowCreatureStore.end())
+            return &itr->second;
+        return nullptr;
+    }
 private:
     // first free id for selected id type
     uint32 _auctionId; // pussywizard: accessed by a single thread
@@ -1645,6 +1666,9 @@ private:
     typedef std::unordered_map<uint32, ItemSetNameEntry> ItemSetNameContainer;
     ItemSetNameContainer _itemSetNameStore;
 
+    typedef std::unordered_map<uint32, ItemTooltip> ItemTooltipContainer;
+    ItemTooltipContainer _itemTooltipStore;
+
     MapObjectGuids _mapObjectGuidsStore;
     CellObjectGuidsMap _emptyCellObjectGuidsMap;
     CellObjectGuids _emptyCellObjectGuids;
@@ -1719,6 +1743,14 @@ private:
         unsigned short m_state;
     };
     std::vector<GameobjectInstanceSavedState> GameobjectInstanceSavedStateList;
+
+    typedef std::unordered_map<uint16, AowowCreature> AowowCreatureContainer;
+    AowowCreatureContainer _aowowCreatureStore;
+
+    // Benchmarked: Faster than std::map (insert/find)
+    typedef std::unordered_map<int16, AowowCreatureSpawn> AowowCreatureSpawnContainer;
+    AowowCreatureSpawnContainer _aowowCreatureSpawnStore;
+    std::unordered_map<uint32, std::unordered_map<uint32, std::vector<AowowCreatureSpawn*>>> _aowowCreatureSpawnIndex;
 };
 
 #define sObjectMgr ObjectMgr::instance()

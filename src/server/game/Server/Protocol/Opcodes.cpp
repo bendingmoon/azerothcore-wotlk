@@ -1439,6 +1439,18 @@ void OpcodeTable::Initialize()
     /*0x51C*/ DEFINE_SERVER_OPCODE_HANDLER(SMSG_COMMENTATOR_SKIRMISH_QUEUE_RESULT1,                 STATUS_NEVER);
     /*0x51D*/ DEFINE_SERVER_OPCODE_HANDLER(SMSG_COMMENTATOR_SKIRMISH_QUEUE_RESULT2,                 STATUS_NEVER);
     /*0x51E*/ DEFINE_SERVER_OPCODE_HANDLER(SMSG_MULTIPLE_MOVES, STATUS_NEVER);
+    /*0x51F*/ DEFINE_HANDLER(CMSG_BOOST_ITEM,                                                       STATUS_LOGGEDIN,   PROCESS_INPLACE,        &WorldSession::HandleBoostItem                          );
+    /*0x520*/ DEFINE_SERVER_OPCODE_HANDLER(SMSG_BOOST_ITEM,                                         STATUS_NEVER);
+    /*0x521*/ DEFINE_HANDLER(CMSG_MOBILE_CHAR_CREATE,                                               STATUS_AUTHED,     PROCESS_THREADUNSAFE,   &WorldSession::HandleCharCreateOpcode                   );
+    /*0x522*/ DEFINE_HANDLER(CMSG_MOBILE_SET_SELECTION,                                             STATUS_LOGGEDIN,   PROCESS_THREADSAFE,     &WorldSession::HandleSetSelectionOpcode                 );
+    /*0x523*/ DEFINE_HANDLER(CMSG_MOBILE_USE_ITEM,                                                  STATUS_LOGGEDIN,   PROCESS_INPLACE,        &WorldSession::HandleUseItemOpcode                      );
+    /*0x524*/ DEFINE_HANDLER(MSG_MOBILE_MOVE_START_FORWARD,                                         STATUS_LOGGEDIN,   PROCESS_THREADSAFE,     &WorldSession::HandleMovementOpcodes                    );
+    /*0x525*/ DEFINE_HANDLER(CMSG_MOBILE_CAST_SPELL,                                                STATUS_LOGGEDIN,   PROCESS_THREADSAFE,     &WorldSession::HandleCastSpellOpcode                    );
+    /*0x526*/ DEFINE_HANDLER(CMSG_MOBILE_CHAR_ENUM,                                                 STATUS_AUTHED,     PROCESS_THREADUNSAFE,   &WorldSession::HandleMobileCharEnumOpcode               );
+    /*0x527*/ DEFINE_HANDLER(CMSG_MOBILE_ITEM_QUERY_SINGLE,                                         STATUS_LOGGEDIN,   PROCESS_THREADSAFE,     &WorldSession::HandleMobileItemQuerySingleOpcode        );
+    /*0x528*/ DEFINE_SERVER_OPCODE_HANDLER(SMSG_MOBILE_ITEM_QUERY_SINGLE_RESPONSE,                  STATUS_NEVER);
+    /*0x529*/ DEFINE_HANDLER(CMSG_MOBILE_CREATURE_QUERY_AOWOW_AREAOBJECT,                           STATUS_LOGGEDIN,   PROCESS_THREADSAFE,     &WorldSession::HandleAowowCreatureAreaObjectQuery       );
+    /*0x52A*/ DEFINE_SERVER_OPCODE_HANDLER(SMSG_MOBILE_CREATURE_QUERY_AOWOW_AREAOBJECT_RESPONSE,    STATUS_NEVER);
 
 #undef DEFINE_HANDLER
 #undef DEFINE_SERVER_OPCODE_HANDLER

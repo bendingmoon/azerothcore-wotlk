@@ -1373,7 +1373,7 @@ SQLQueryHolderCallback& WorldSession::AddQueryHolderCallback(SQLQueryHolderCallb
 
 void WorldSession::InitWarden(SessionKey const& k, std::string const& os)
 {
-    if (os == "Win")
+    if (os == "Win" || os == "App")
     {
         _warden = std::make_unique<WardenWin>();
         _warden->Init(this, k);

@@ -193,6 +193,14 @@ void Channel::JoinChannel(Player* player, std::string const& pass)
         SendToOne(&data, guid);
         return;
     }
+    
+    if (GetChannelId()==0 && player->GetLevel()<10)
+    {
+        WorldPacket data;
+        MakeNotInLfg(&data);
+        SendToOne(&data, guid);
+        return;
+    }
 
     player->JoinedChannel(this);
 

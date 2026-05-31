@@ -1103,7 +1103,7 @@ void Player::RemoveRestState()
     RemovePlayerFlag(PLAYER_FLAGS_RESTING);
 }
 
-bool Player::BuildEnumData(PreparedQueryResult result, WorldPacket* data)
+bool Player::BuildEnumData(PreparedQueryResult result, WorldPacket* data, bool isMobile)
 {
     //             0               1                2                3                 4                  5                 6               7
     //    "SELECT characters.guid, characters.name, characters.race, characters.class, characters.gender, characters.skin, characters.face, characters.hairStyle,
@@ -1290,8 +1290,10 @@ bool Player::BuildEnumData(PreparedQueryResult result, WorldPacket* data)
                 break;
             }
         }
-
-        *data << uint32(proto->DisplayInfoID);
+        if (isMobile)
+            *data << uint32(proto->ItemId);//proto->DisplayInfoID
+        else
+            *data << uint32(proto->DisplayInfoID);//proto->DisplayInfoID       
         *data << uint8(proto->InventoryType);
         *data << uint32(enchant ? enchant->aura_id : 0);
     }

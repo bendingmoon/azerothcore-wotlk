@@ -41,6 +41,7 @@ enum eAuthCmd
     AUTH_RECONNECT_CHALLENGE = 0x02,
     AUTH_RECONNECT_PROOF = 0x03,
     REALM_LIST = 0x10,
+    MOBILE_REALM_LIST = 0x11,
     XFER_INITIATE = 0x30,
     XFER_DATA = 0x31,
     XFER_ACCEPT = 0x32,
@@ -128,6 +129,7 @@ std::unordered_map<uint8, AuthHandler> AuthSession::InitHandlers()
     handlers[AUTH_RECONNECT_CHALLENGE] =    { STATUS_CHALLENGE,         AUTH_LOGON_CHALLENGE_INITIAL_SIZE, &AuthSession::HandleReconnectChallenge };
     handlers[AUTH_RECONNECT_PROOF] =        { STATUS_RECONNECT_PROOF,   sizeof(AUTH_RECONNECT_PROOF_C),    &AuthSession::HandleReconnectProof };
     handlers[REALM_LIST] =                  { STATUS_AUTHED,            REALM_LIST_PACKET_SIZE,            &AuthSession::HandleRealmList };
+    handlers[MOBILE_REALM_LIST] =           { STATUS_AUTHED,            REALM_LIST_PACKET_SIZE,            &AuthSession::HandleMobileRealmList };
 
     return handlers;
 }
@@ -736,6 +738,18 @@ bool AuthSession::HandleRealmList()
     return true;
 }
 
+bool AuthSession::HandleMobileRealmList()
+{
+    LOG_DEBUG("server.authserver", "Entering _HandleMobileRealmList");
+
+    LoginDatabasePreparedStatement* stmt = LoginDatabase.GetPreparedStatement(LOGIN_SEL_REALM_CHARACTER_COUNTS);
+    stmt->SetData(0, _accountInfo.Id);
+
+    _queryProcessor.AddCallback(LoginDatabase.AsyncQuery(stmt).WithPreparedCallback(std::bind(&AuthSession::MobileRealmListCallback, this, std::placeholders::_1)));
+    _status = STATUS_WAITING_FOR_REALM_LIST;
+    return true;
+}
+
 void AuthSession::RealmListCallback(PreparedQueryResult result)
 {
     std::map<uint32, uint8> characterCounts;
@@ -838,6 +852,108 @@ void AuthSession::RealmListCallback(PreparedQueryResult result)
     _status = STATUS_AUTHED;
 }
 
+void AuthSession::MobileRealmListCallback(PreparedQueryResult result)
+{
+    std::map<uint32, uint8> characterCounts;
+    if (result)
+    {
+        do
+        {
+            Field* fields = result->Fetch();
+            characterCounts[fields[0].Get<uint32>()] = fields[1].Get<uint8>();
+        } while (result->NextRow());
+    }
+
+    // Circle through realms in the RealmList and construct the return packet (including # of user characters in each realm)
+    ByteBuffer pkt;
+
+    std::size_t RealmListSize = 0;
+    for (auto const& [realmHandle, realm] : sRealmList->GetRealms())
+    {
+        // don't work with realms which not compatible with the client
+        bool okBuild = ((_expversion & POST_BC_EXP_FLAG) && realm.Build == _build) || ((_expversion & PRE_BC_EXP_FLAG) && !AuthHelper::IsPreBCAcceptedClientBuild(realm.Build));
+
+        // No SQL injection. id of realm is controlled by the database.
+        uint32 flag = realm.Flags;
+        RealmBuildInfo const* buildInfo = sRealmList->GetBuildInfo(realm.Build);
+        if (!okBuild)
+        {
+            if (!buildInfo)
+                continue;
+
+            flag |= REALM_FLAG_OFFLINE | REALM_FLAG_SPECIFYBUILD;   // tell the client what build the realm is for
+        }
+
+        if (!buildInfo)
+            flag &= ~REALM_FLAG_SPECIFYBUILD;
+
+        std::string name = realm.Name;
+        if (_expversion & PRE_BC_EXP_FLAG && flag & REALM_FLAG_SPECIFYBUILD)
+        {
+            std::ostringstream ss;
+            ss << name << " (" << buildInfo->MajorVersion << '.' << buildInfo->MinorVersion << '.' << buildInfo->BugfixVersion << ')';
+            name = ss.str();
+        }
+
+        uint8 lock = (realm.AllowedSecurityLevel > _accountInfo.SecurityLevel) ? 1 : 0;
+
+        pkt << uint8(realm.Type);                           // realm type
+        if (_expversion & POST_BC_EXP_FLAG)                 // only 2.x and 3.x clients
+            pkt << uint8(lock);                             // if 1, then realm locked
+
+        pkt << uint8(flag);                                 // RealmFlags
+        pkt << name;
+        pkt << boost::lexical_cast<std::string>(realm.GetAddressForClient(GetRemoteIpAddress()));
+        pkt << float(realm.PopulationLevel);
+        pkt << uint8(characterCounts[realm.Id.Realm]);
+        pkt << uint8(realm.Timezone);                       // realm category
+
+        if (_expversion & POST_BC_EXP_FLAG)                 // 2.x and 3.x clients
+            pkt << uint8(realm.Id.Realm);
+        else
+            pkt << uint8(0x0);                              // 1.12.1 and 1.12.2 clients
+
+        if (_expversion & POST_BC_EXP_FLAG && flag & REALM_FLAG_SPECIFYBUILD)
+        {
+            pkt << uint8(buildInfo->MajorVersion);
+            pkt << uint8(buildInfo->MinorVersion);
+            pkt << uint8(buildInfo->BugfixVersion);
+            pkt << uint16(buildInfo->Build);
+        }
+
+        ++RealmListSize;
+    }
+
+    if (_expversion & POST_BC_EXP_FLAG)                     // 2.x and 3.x clients
+    {
+        pkt << uint8(0x10);
+        pkt << uint8(0x00);
+    }
+    else                                                    // 1.12.1 and 1.12.2 clients
+    {
+        pkt << uint8(0x00);
+        pkt << uint8(0x02);
+    }
+
+    // make a ByteBuffer which stores the RealmList's size
+    ByteBuffer RealmListSizeBuffer;
+    RealmListSizeBuffer << uint32(0);
+
+    if (_expversion & POST_BC_EXP_FLAG)                     // only 2.x and 3.x clients
+        RealmListSizeBuffer << uint16(RealmListSize);
+    else
+        RealmListSizeBuffer << uint32(RealmListSize);
+
+    ByteBuffer hdr;
+    hdr << uint8(MOBILE_REALM_LIST);
+    hdr << uint16(pkt.size() + RealmListSizeBuffer.size());
+    hdr.append(RealmListSizeBuffer);                        // append RealmList's size buffer
+    hdr.append(pkt);                                        // append realms in the realmlist
+    SendPacket(hdr);
+
+    _status = STATUS_AUTHED;
+}
+
 bool AuthSession::VerifyVersion(uint8 const* a, int32 aLength, Acore::Crypto::SHA1::Digest const& versionProof, bool isReconnect)
 {
     if (!sConfigMgr->GetOption<bool>("StrictVersionCheck", false))
@@ -852,7 +968,7 @@ bool AuthSession::VerifyVersion(uint8 const* a, int32 aLength, Acore::Crypto::SH
         if (!buildInfo)
             return false;
 
-        if (_os == "Win")
+        if (_os == "Win" || _os == "App")
             versionHash = &buildInfo->WindowsHash;
         else if (_os == "OSX")
             versionHash = &buildInfo->MacHash;

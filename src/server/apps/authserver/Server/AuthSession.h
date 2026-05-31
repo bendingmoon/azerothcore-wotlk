@@ -84,11 +84,13 @@ private:
     bool HandleReconnectChallenge();
     bool HandleReconnectProof();
     bool HandleRealmList();
+    bool HandleMobileRealmList();
 
     void CheckIpCallback(PreparedQueryResult result);
     void LogonChallengeCallback(PreparedQueryResult result);
     void ReconnectChallengeCallback(PreparedQueryResult result);
     void RealmListCallback(PreparedQueryResult result);
+    void MobileRealmListCallback(PreparedQueryResult result);
 
     bool VerifyVersion(uint8 const* a, int32 aLength, Acore::Crypto::SHA1::Digest const& versionProof, bool isReconnect);
 

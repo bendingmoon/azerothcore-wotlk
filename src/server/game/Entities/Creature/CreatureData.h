@@ -506,4 +506,23 @@ struct CreatureSpellCooldown
 
 typedef std::map<uint32, CreatureSpellCooldown> CreatureSpellCooldowns;
 
+struct AowowCreature
+{
+    std::string  name_loc0;
+    std::string  name_loc4;
+    std::string  subname_loc4;
+    uint8 minLevel;
+    uint8 maxLevel;
+    uint32 npcflag;
+};
+
+struct AowowCreatureSpawn
+{
+    uint32 type;
+    uint32 typeId;
+    uint32 areaId;
+    float posX;
+    float posY;
+};
+
 #endif // AZEROTHCORE_CREATUREDATA_H

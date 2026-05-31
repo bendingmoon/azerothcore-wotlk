@@ -231,7 +231,35 @@ void WorldSession::HandleCharEnum(PreparedQueryResult result)
         {
             ObjectGuid guid = ObjectGuid::Create<HighGuid::Player>((*result)[0].Get<uint32>());
             LOG_DEBUG("network.opcode", "Loading char {} from account {}.", guid.ToString(), GetAccountId());
-            if (Player::BuildEnumData(result, &data))
+            if (Player::BuildEnumData(result, &data, false))
+            {
+                _legitCharacters.insert(guid);
+                ++num;
+            }
+        } while (result->NextRow());
+    }
+
+    data.put<uint8>(0, num);
+
+    SendPacket(&data);
+}
+
+void WorldSession::HandleMobileCharEnum(PreparedQueryResult result)
+{
+    WorldPacket data(SMSG_CHAR_ENUM, 100);                  // we guess size
+
+    uint8 num = 0;
+
+    data << num;
+
+    _legitCharacters.clear();
+    if (result)
+    {
+        do
+        {
+            ObjectGuid guid = ObjectGuid::Create<HighGuid::Player>((*result)[0].Get<uint32>());
+            LOG_DEBUG("network.opcode", "Loading char {} from account {}.", guid.ToString(), GetAccountId());
+            if (Player::BuildEnumData(result, &data, true))
             {
                 _legitCharacters.insert(guid);
                 ++num;
@@ -259,6 +287,23 @@ void WorldSession::HandleCharEnumOpcode(WorldPacket& /*recvData*/)
     stmt->SetData(1, GetAccountId());
 
     _queryProcessor.AddCallback(CharacterDatabase.AsyncQuery(stmt).WithPreparedCallback(std::bind(&WorldSession::HandleCharEnum, this, std::placeholders::_1)));
+}
+
+void WorldSession::HandleMobileCharEnumOpcode(WorldPacket& /*recvData*/)
+{
+    CharacterDatabasePreparedStatement* stmt = nullptr;
+
+    /// get all the data necessary for loading all characters (along with their pets) on the account
+
+    if (sWorld->getBoolConfig(CONFIG_DECLINED_NAMES_USED))
+        stmt = CharacterDatabase.GetPreparedStatement(CHAR_SEL_ENUM_DECLINED_NAME);
+    else
+        stmt = CharacterDatabase.GetPreparedStatement(CHAR_SEL_ENUM);
+
+    stmt->SetData(0, PET_SAVE_AS_CURRENT);
+    stmt->SetData(1, GetAccountId());
+
+    _queryProcessor.AddCallback(CharacterDatabase.AsyncQuery(stmt).WithPreparedCallback(std::bind(&WorldSession::HandleMobileCharEnum, this, std::placeholders::_1)));
 }
 
 void WorldSession::HandleCharCreateOpcode(WorldPacket& recvData)
