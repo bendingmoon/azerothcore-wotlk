@@ -44,6 +44,18 @@ WorldPacket const* WorldPackets::Query::NameQueryResponse::Write()
     return &_worldPacket;
 }
 
+WorldPacket const* WorldPackets::Query::MobileNameQueryResponse::Write()
+{
+    _worldPacket << Guid;
+    _worldPacket << Name;
+    _worldPacket << Level;
+    _worldPacket << Race;
+    _worldPacket << Class;
+    _worldPacket << Sex;
+
+    return &_worldPacket;
+}
+
 WorldPacket const* WorldPackets::Query::TimeQueryResponse::Write()
 {
     _worldPacket << ServerTime;

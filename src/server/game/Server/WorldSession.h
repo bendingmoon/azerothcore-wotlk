@@ -1168,6 +1168,7 @@ public:                                                 // opcodes handlers
     void HandleQueryQuestsCompleted(WorldPacket& recvData);
     void HandleQuestPOIQuery(WorldPacket& recvData);
     void HandleAowowCreatureAreaObjectQuery(WorldPacket& recvData);
+    void HandleMobileAutoQuestStartOpcode(WorldPacket& recvData);
     void HandleEjectPassenger(WorldPacket& data);
     void HandleEnterPlayerVehicle(WorldPacket& data);
     void HandleUpdateProjectilePosition(WorldPacket& recvPacket);

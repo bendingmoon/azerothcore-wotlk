@@ -59,6 +59,18 @@ void WorldSession::SendNameQueryOpcode(ObjectGuid guid)
         nameQueryResponse.Declined = false;
 
     SendPacket(nameQueryResponse.Write());
+
+    // Send mobile-specific response with Level for mobile client
+    {
+        WorldPackets::Query::MobileNameQueryResponse mobileResponse;
+        mobileResponse.Guid = guid.WriteAsPacked();
+        mobileResponse.Name = playerData->Name;
+        mobileResponse.Level = playerData->Level;
+        mobileResponse.Race = nameQueryResponse.Race;
+        mobileResponse.Class = nameQueryResponse.Class;
+        mobileResponse.Sex = nameQueryResponse.Sex;
+        SendPacket(mobileResponse.Write());
+    }
 }
 
 void WorldSession::HandleNameQueryOpcode(WorldPackets::Query::NameQuery& packet)

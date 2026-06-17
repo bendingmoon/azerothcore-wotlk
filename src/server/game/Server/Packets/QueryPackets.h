@@ -53,6 +53,21 @@ namespace WorldPackets
             DeclinedName DeclinedNames;
         };
 
+        class MobileNameQueryResponse final : public ServerPacket
+        {
+        public:
+            MobileNameQueryResponse() : ServerPacket(SMSG_MOBILE_NAME_QUERY_RESPONSE, 8 + 1 + 1 + 1 + 1 + 50) {}
+
+            WorldPacket const* Write() override;
+
+            PackedGuid Guid;
+            std::string_view Name;
+            uint8 Level = 0;
+            uint8 Race = RACE_NONE;
+            uint8 Class = CLASS_NONE;
+            uint8 Sex = GENDER_MALE;
+        };
+
         class TimeQuery final : public ClientPacket
         {
         public:

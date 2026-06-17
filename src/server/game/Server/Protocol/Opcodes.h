@@ -1350,7 +1350,11 @@ enum Opcodes : uint16
     SMSG_MOBILE_ITEM_QUERY_SINGLE_RESPONSE          = 0x528,
     CMSG_MOBILE_CREATURE_QUERY_AOWOW_AREAOBJECT                   = 0x529,
     SMSG_MOBILE_CREATURE_QUERY_AOWOW_AREAOBJECT_RESPONSE          = 0x52A,
-    NUM_MSG_TYPES                                   = 0x52B
+    CMSG_MOBILE_AUTO_QUEST_START                                  = 0x52B,
+    SMSG_MOBILE_AUTO_QUEST_START_RESPONSE                         = 0x52C,
+    SMSG_MOBILE_AUTO_QUEST_STOP                                   = 0x52D,
+    SMSG_MOBILE_NAME_QUERY_RESPONSE                               = 0x52E,
+    NUM_MSG_TYPES                                   = 0x52F
 };
 
 enum OpcodeMisc : uint16
