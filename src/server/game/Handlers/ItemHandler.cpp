@@ -31,6 +31,7 @@
 
 #include "ItemPackets.h"
 #include "../../../../modules/StatBooster/src/StatBoostMgr.h"
+#include "../../../../modules/mod-item-upgrade/src/item_upgrade.h"
 
 void WorldSession::HandleSplitItemOpcode(WorldPackets::Item::SplitItem& packet)
 {
@@ -701,6 +702,7 @@ void WorldSession::HandleMobileItemQuerySingleOpcode(WorldPacket& recvData)
         queryData << pProto->Duration;                           // added in 2.4.2.8209, duration (seconds)
         queryData << pProto->ItemLimitCategory;                  // WotLK, ItemLimitCategory
         queryData << HolidayId;                                  // Holiday.dbc? 暂时用于图标id
+        queryData << uint8(sItemUpgrade->IsItemEntryUpgradeable(item) ? 1 : 0);  // 装备是否可升级标识
         SendPacket(&queryData);
     }
     else
@@ -710,6 +712,317 @@ void WorldSession::HandleMobileItemQuerySingleOpcode(WorldPacket& recvData)
         queryData << uint32(item | 0x80000000);
         SendPacket(&queryData);
     }
+}
+
+void WorldSession::HandleMobileItemUpgradeQueryOpcode(WorldPacket& recvData)
+{
+    ObjectGuid itemGuid;
+    recvData >> itemGuid;
+
+    Item* item = _player->GetItemByGuid(itemGuid);
+    if (!item)
+    {
+        WorldPacket data(SMSG_MOBILE_ITEM_UPGRADE_QUERY_RESPONSE, 1);
+        data << uint8(0);
+        SendPacket(&data);
+        return;
+    }
+
+    uint32 itemEntry = item->GetEntry();
+    const ItemUpgrade::ItemTier* currentTier = sItemUpgrade->GetCurrentTier(_player, item);
+    uint8 currentTierNum = currentTier ? currentTier->tier : 0;
+    std::string currentTierName = currentTier ? currentTier->name : "";
+    uint8 maxTier = static_cast<uint8>(sItemUpgrade->GetIntConfig(CONFIG_ITEM_UPGRADE_MAX_TIER));
+
+    const ItemTemplate* proto = item->GetTemplate();
+    uint16 tierEndRank = currentTier ? currentTier->endRank : 0;
+
+    // Helper: write a single cost block (costType, val1, val2)
+    auto writeCost = [](WorldPacket& d, uint8 costType, uint32 val1, uint32 val2) {
+        d << costType;
+        d << val1;
+        d << val2;
+    };
+
+    WorldPacket data(SMSG_MOBILE_ITEM_UPGRADE_QUERY_RESPONSE, 512);
+    data << uint8(1); // success
+    data << uint32(itemEntry);
+    data << uint8(currentTierNum);
+    data << currentTierName;
+    data << uint8(maxTier);
+
+    // === Category 1: Stat — 每个属性独立一条上报 ===
+    struct StatLine
+    {
+        uint32 statType;
+        uint16 curRank;
+        const ItemUpgrade::UpgradeStat* curUpgrade;
+    };
+    std::vector<StatLine> statLines;
+
+    for (uint8 i = 0; i < proto->StatsCount; ++i)
+    {
+        if (proto->ItemStat[i].ItemStatValue <= 0)
+            continue;
+        uint32 sType = proto->ItemStat[i].ItemStatType;
+        if (!sItemUpgrade->IsAllowedStatType(sType))
+            continue;
+        if (!sItemUpgrade->FindUpgradeStat(sType, 1))
+            continue;
+
+        const ItemUpgrade::UpgradeStat* cur = sItemUpgrade->FindUpgradeForItem(_player, item, sType);
+        StatLine line;
+        line.statType = sType;
+        line.curRank = cur ? cur->statRank : 0;
+        line.curUpgrade = cur;
+        statLines.push_back(line);
+    }
+
+    data << uint8(static_cast<uint8>(statLines.size()));
+    for (const auto& sl : statLines)
+    {
+        bool isMaxed = (tierEndRank > 0) && (sl.curRank >= tierEndRank);
+        float curModPct = sl.curUpgrade ? sl.curUpgrade->statModPct : 0.0f;
+
+        uint16 nextRank = 0;
+        float nextModPct = 0.0f;
+
+        if (!isMaxed && tierEndRank > 0)
+        {
+            nextRank = sl.curRank > 0 ? sl.curRank + 1 : currentTier->beginRank;
+            const ItemUpgrade::UpgradeStat* nextStat = sItemUpgrade->FindUpgradeStat(sl.statType, nextRank);
+            if (nextStat)
+                nextModPct = nextStat->statModPct;
+        }
+
+        data << uint32(sl.statType);
+        data << uint16(sl.curRank);
+        data << uint16(nextRank);
+        data << float(curModPct);
+        data << float(nextModPct);
+        data << uint8(isMaxed ? 1 : 0);
+
+        if (!isMaxed && nextRank > 0)
+        {
+            const ItemUpgrade::UpgradeStat* nextStat = sItemUpgrade->FindUpgradeStat(sl.statType, nextRank);
+            if (nextStat)
+            {
+                const ItemUpgrade::StatRequirementContainer* reqs = sItemUpgrade->GetStatRequirements(nextStat, item);
+                if (reqs && !reqs->empty() && reqs->at(0).reqType != ItemUpgrade::REQ_TYPE_NONE)
+                    writeCost(data, static_cast<uint8>(reqs->at(0).reqType),
+                        static_cast<uint32>(reqs->at(0).reqVal1), static_cast<uint32>(reqs->at(0).reqVal2));
+                else
+                    writeCost(data, 0, 0, 0);
+            }
+            else
+                writeCost(data, 0, 0, 0);
+        }
+    }
+
+    // === Category 2: Weapon Damage ===
+    bool hasWeaponDmg = sItemUpgrade->IsValidWeaponForUpgrade(item, _player);
+    data << uint8(hasWeaponDmg ? 1 : 0);
+    if (hasWeaponDmg)
+    {
+        const ItemUpgrade::UpgradeStat* dmgUpgrade = sItemUpgrade->FindUpgradeForWeaponDamage(_player, item);
+        uint16 dmgCurRank = dmgUpgrade ? dmgUpgrade->statRank : 0;
+        bool dmgMaxed = (tierEndRank > 0) && (dmgCurRank >= tierEndRank);
+        float dmgCurPct = dmgUpgrade ? dmgUpgrade->statModPct : 0.0f;
+
+        uint16 dmgNextRank = 0;
+        float dmgNextPct = 0.0f;
+        if (!dmgMaxed && tierEndRank > 0)
+        {
+            dmgNextRank = dmgCurRank > 0 ? dmgCurRank + 1 : currentTier->beginRank;
+            const ItemUpgrade::WeaponUpgradeRank* nextWpn = sItemUpgrade->FindWeaponDmgRank(dmgNextRank);
+            if (nextWpn)
+                dmgNextPct = nextWpn->statModPct;
+        }
+
+        data << uint16(dmgCurRank);
+        data << uint16(dmgNextRank);
+        data << float(dmgCurPct);
+        data << float(dmgNextPct);
+        data << uint8(dmgMaxed ? 1 : 0);
+
+        if (!dmgMaxed && dmgNextRank > 0)
+        {
+            const ItemUpgrade::WeaponUpgradeRank* n = sItemUpgrade->FindWeaponDmgRank(dmgNextRank);
+            if (n && n->reqType != ItemUpgrade::REQ_TYPE_NONE)
+                writeCost(data, n->reqType, static_cast<uint32>(n->reqVal1), static_cast<uint32>(n->reqVal2));
+            else
+                writeCost(data, 0, 0, 0);
+        }
+    }
+
+    // === Category 3: Weapon Speed ===
+    bool hasWeaponSpd = sItemUpgrade->IsValidWeaponForSpeedUpgrade(item, _player);
+    data << uint8(hasWeaponSpd ? 1 : 0);
+    if (hasWeaponSpd)
+    {
+        const ItemUpgrade::UpgradeStat* spdUpgrade = sItemUpgrade->FindUpgradeForWeaponSpeed(_player, item);
+        uint16 spdCurRank = spdUpgrade ? spdUpgrade->statRank : 0;
+        bool spdMaxed = (tierEndRank > 0) && (spdCurRank >= tierEndRank);
+        float spdCurPct = spdUpgrade ? spdUpgrade->statModPct : 0.0f;
+
+        uint16 spdNextRank = 0;
+        float spdNextPct = 0.0f;
+        if (!spdMaxed && tierEndRank > 0)
+        {
+            spdNextRank = spdCurRank > 0 ? spdCurRank + 1 : currentTier->beginRank;
+            const ItemUpgrade::WeaponUpgradeRank* nextWpn = sItemUpgrade->FindWeaponSpdRank(spdNextRank);
+            if (nextWpn)
+                spdNextPct = nextWpn->statModPct;
+        }
+
+        data << uint16(spdCurRank);
+        data << uint16(spdNextRank);
+        data << float(spdCurPct);
+        data << float(spdNextPct);
+        data << uint8(spdMaxed ? 1 : 0);
+
+        if (!spdMaxed && spdNextRank > 0)
+        {
+            const ItemUpgrade::WeaponUpgradeRank* n = sItemUpgrade->FindWeaponSpdRank(spdNextRank);
+            if (n && n->reqType != ItemUpgrade::REQ_TYPE_NONE)
+                writeCost(data, n->reqType, static_cast<uint32>(n->reqVal1), static_cast<uint32>(n->reqVal2));
+            else
+                writeCost(data, 0, 0, 0);
+        }
+    }
+
+    // === Breakthrough ===
+    bool canBreakthrough = sItemUpgrade->CanBreakthrough(_player, item);
+    data << uint8(canBreakthrough ? 1 : 0);
+    if (canBreakthrough)
+    {
+        const ItemUpgrade::ItemTier* nextTier = sItemUpgrade->GetNextTier(_player, item);
+        data << uint8(nextTier ? nextTier->breakthroughCostType : 0);
+        data << uint32(nextTier ? static_cast<uint32>(nextTier->breakthroughCostVal1) : 0);
+        data << uint32(nextTier ? static_cast<uint32>(nextTier->breakthroughCostVal2) : 0);
+    }
+
+    SendPacket(&data);
+}
+
+void WorldSession::HandleMobileItemBreakthroughOpcode(WorldPacket& recvData)
+{
+    ObjectGuid itemGuid;
+    recvData >> itemGuid;
+
+    Item* item = _player->GetItemByGuid(itemGuid);
+    if (!item)
+    {
+        WorldPacket data(SMSG_MOBILE_ITEM_BREAKTHROUGH_RESPONSE, 16);
+        data << uint8(0);  // success = false
+        data << uint8(0);  // error: item not found
+        data << uint8(0);  // new tier
+        data << std::string("");  // new tier name
+        SendPacket(&data);
+        return;
+    }
+
+    if (!sItemUpgrade->CanBreakthrough(_player, item))
+    {
+        WorldPacket data(SMSG_MOBILE_ITEM_BREAKTHROUGH_RESPONSE, 16);
+        data << uint8(0);  // success = false
+        data << uint8(1);  // error: conditions not met
+        data << uint8(0);
+        data << std::string("");
+        SendPacket(&data);
+        return;
+    }
+
+    bool result = sItemUpgrade->PerformBreakthrough(_player, item);
+    const ItemUpgrade::ItemTier* newTier = sItemUpgrade->GetCurrentTier(_player, item);
+
+    WorldPacket data(SMSG_MOBILE_ITEM_BREAKTHROUGH_RESPONSE, 64);
+    data << uint8(result ? 1 : 0);               // success
+    data << uint8(result ? 0 : 2);               // error code (0=ok, 2=internal)
+    data << uint8(newTier ? newTier->tier : 0);  // new tier num
+    data << std::string(newTier ? newTier->name : "");
+    SendPacket(&data);
+}
+
+void WorldSession::HandleMobileItemUpgradePurchaseOpcode(WorldPacket& recvData)
+{
+    ObjectGuid itemGuid;
+    uint8 category;
+    uint32 statType = 0;
+    recvData >> itemGuid >> category;
+    if (category == 0)
+        recvData >> statType;
+
+    Item* item = _player->GetItemByGuid(itemGuid);
+    if (!item)
+    {
+        WorldPacket data(SMSG_MOBILE_ITEM_UPGRADE_PURCHASE_RESPONSE, 12);
+        data << uint8(0);       // success = false
+        data << uint8(1);       // error: item not found
+        data << uint16(0);      // new rank
+        data << float(0.0f);    // new mod pct
+        SendPacket(&data);
+        return;
+    }
+
+    bool result = false;
+    uint16 newRank = 0;
+    float newModPct = 0.0f;
+
+    switch (category)
+    {
+        case 0: // Stat upgrade
+        {
+            result = sItemUpgrade->PurchaseStatUpgrade(_player, item, statType);
+            if (result)
+            {
+                const ItemUpgrade::UpgradeStat* cur = sItemUpgrade->FindUpgradeForItem(_player, item, statType);
+                if (cur)
+                {
+                    newRank = cur->statRank;
+                    newModPct = cur->statModPct;
+                }
+            }
+            break;
+        }
+        case 1: // Weapon damage upgrade
+        {
+            result = sItemUpgrade->PurchaseWeaponDmgUpgrade(_player, item);
+            if (result)
+            {
+                const ItemUpgrade::UpgradeStat* cur = sItemUpgrade->FindUpgradeForWeaponDamage(_player, item);
+                if (cur)
+                {
+                    newRank = cur->statRank;
+                    newModPct = cur->statModPct;
+                }
+            }
+            break;
+        }
+        case 2: // Weapon speed upgrade
+        {
+            result = sItemUpgrade->PurchaseWeaponSpdUpgrade(_player, item);
+            if (result)
+            {
+                const ItemUpgrade::UpgradeStat* cur = sItemUpgrade->FindUpgradeForWeaponSpeed(_player, item);
+                if (cur)
+                {
+                    newRank = cur->statRank;
+                    newModPct = cur->statModPct;
+                }
+            }
+            break;
+        }
+        default:
+            break;
+    }
+
+    WorldPacket data(SMSG_MOBILE_ITEM_UPGRADE_PURCHASE_RESPONSE, 12);
+    data << uint8(result ? 1 : 0);
+    data << uint8(result ? 0 : 5);  // 0 = ok, 5 = internal/unknown failure
+    data << uint16(newRank);
+    data << float(newModPct);
+    SendPacket(&data);
 }
 
 void WorldSession::HandleReadItem(WorldPackets::Item::ReadItem& packet)

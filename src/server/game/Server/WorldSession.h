@@ -900,6 +900,9 @@ public:                                                 // opcodes handlers
     void HandleAutoEquipItemOpcode(WorldPackets::Item::AutoEquipItem& packet);
     void HandleItemQuerySingleOpcode(WorldPacket& recvPacket);
     void HandleMobileItemQuerySingleOpcode(WorldPacket& recvPacket);
+    void HandleMobileItemUpgradeQueryOpcode(WorldPacket& recvData);
+    void HandleMobileItemBreakthroughOpcode(WorldPacket& recvData);
+    void HandleMobileItemUpgradePurchaseOpcode(WorldPacket& recvData);
     void HandleSellItemOpcode(WorldPackets::Item::SellItem& packet);
     void HandleBuyItemInSlotOpcode(WorldPackets::Item::BuyItemInSlot& packet);
     void HandleBuyItemOpcode(WorldPackets::Item::BuyItem& packet);

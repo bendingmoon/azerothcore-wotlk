@@ -1354,7 +1354,13 @@ enum Opcodes : uint16
     SMSG_MOBILE_AUTO_QUEST_START_RESPONSE                         = 0x52C,
     SMSG_MOBILE_AUTO_QUEST_STOP                                   = 0x52D,
     SMSG_MOBILE_NAME_QUERY_RESPONSE                               = 0x52E,
-    NUM_MSG_TYPES                                   = 0x52F
+    CMSG_MOBILE_ITEM_UPGRADE_QUERY                                = 0x52F,
+    SMSG_MOBILE_ITEM_UPGRADE_QUERY_RESPONSE                       = 0x530,
+    CMSG_MOBILE_ITEM_BREAKTHROUGH                                 = 0x531,
+    SMSG_MOBILE_ITEM_BREAKTHROUGH_RESPONSE                        = 0x532,
+    CMSG_MOBILE_ITEM_UPGRADE_PURCHASE                             = 0x533,
+    SMSG_MOBILE_ITEM_UPGRADE_PURCHASE_RESPONSE                    = 0x534,
+    NUM_MSG_TYPES                                                 = 0x535
 };
 
 enum OpcodeMisc : uint16
