@@ -723,6 +723,7 @@ void WorldSession::HandleMobileItemUpgradeQueryOpcode(WorldPacket& recvData)
     if (!item)
     {
         WorldPacket data(SMSG_MOBILE_ITEM_UPGRADE_QUERY_RESPONSE, 1);
+        data << itemGuid;
         data << uint8(0);
         SendPacket(&data);
         return;
@@ -731,8 +732,8 @@ void WorldSession::HandleMobileItemUpgradeQueryOpcode(WorldPacket& recvData)
     uint32 itemEntry = item->GetEntry();
     const ItemUpgrade::ItemTier* currentTier = sItemUpgrade->GetCurrentTier(_player, item);
     uint8 currentTierNum = currentTier ? currentTier->tier : 0;
-    std::string currentTierName = currentTier ? currentTier->name : "";
-    uint8 maxTier = static_cast<uint8>(sItemUpgrade->GetIntConfig(CONFIG_ITEM_UPGRADE_MAX_TIER));
+    // std::string currentTierName = currentTier ? currentTier->name : "";
+    uint8 maxTier = sItemUpgrade->GetMaxTierNum(itemEntry);
 
     const ItemTemplate* proto = item->GetTemplate();
     uint16 tierEndRank = currentTier ? currentTier->endRank : 0;
@@ -745,10 +746,11 @@ void WorldSession::HandleMobileItemUpgradeQueryOpcode(WorldPacket& recvData)
     };
 
     WorldPacket data(SMSG_MOBILE_ITEM_UPGRADE_QUERY_RESPONSE, 512);
+    data << itemGuid;
     data << uint8(1); // success
     data << uint32(itemEntry);
     data << uint8(currentTierNum);
-    data << currentTierName;
+    // data << currentTierName;
     data << uint8(maxTier);
 
     // === Category 1: Stat — 每个属性独立一条上报 ===
@@ -813,9 +815,17 @@ void WorldSession::HandleMobileItemUpgradeQueryOpcode(WorldPacket& recvData)
                         static_cast<uint32>(reqs->at(0).reqVal1), static_cast<uint32>(reqs->at(0).reqVal2));
                 else
                     writeCost(data, 0, 0, 0);
+                data << float(nextStat->successChance);
             }
             else
+            {
                 writeCost(data, 0, 0, 0);
+                data << float(0.0f);
+            }
+        }
+        else
+        {
+            data << float(0.0f);
         }
     }
 
@@ -852,6 +862,11 @@ void WorldSession::HandleMobileItemUpgradeQueryOpcode(WorldPacket& recvData)
                 writeCost(data, n->reqType, static_cast<uint32>(n->reqVal1), static_cast<uint32>(n->reqVal2));
             else
                 writeCost(data, 0, 0, 0);
+            data << float(n ? n->successChance : 0.0f);
+        }
+        else
+        {
+            data << float(0.0f);
         }
     }
 
@@ -888,6 +903,11 @@ void WorldSession::HandleMobileItemUpgradeQueryOpcode(WorldPacket& recvData)
                 writeCost(data, n->reqType, static_cast<uint32>(n->reqVal1), static_cast<uint32>(n->reqVal2));
             else
                 writeCost(data, 0, 0, 0);
+            data << float(n ? n->successChance : 0.0f);
+        }
+        else
+        {
+            data << float(0.0f);
         }
     }
 
@@ -965,7 +985,7 @@ void WorldSession::HandleMobileItemUpgradePurchaseOpcode(WorldPacket& recvData)
         return;
     }
 
-    bool result = false;
+    ItemUpgrade::UpgradeResult result = ItemUpgrade::UPGRADE_ERR_INTERNAL;
     uint16 newRank = 0;
     float newModPct = 0.0f;
 
@@ -974,7 +994,7 @@ void WorldSession::HandleMobileItemUpgradePurchaseOpcode(WorldPacket& recvData)
         case 0: // Stat upgrade
         {
             result = sItemUpgrade->PurchaseStatUpgrade(_player, item, statType);
-            if (result)
+            if (result == ItemUpgrade::UPGRADE_OK)
             {
                 const ItemUpgrade::UpgradeStat* cur = sItemUpgrade->FindUpgradeForItem(_player, item, statType);
                 if (cur)
@@ -988,7 +1008,7 @@ void WorldSession::HandleMobileItemUpgradePurchaseOpcode(WorldPacket& recvData)
         case 1: // Weapon damage upgrade
         {
             result = sItemUpgrade->PurchaseWeaponDmgUpgrade(_player, item);
-            if (result)
+            if (result == ItemUpgrade::UPGRADE_OK)
             {
                 const ItemUpgrade::UpgradeStat* cur = sItemUpgrade->FindUpgradeForWeaponDamage(_player, item);
                 if (cur)
@@ -1002,7 +1022,7 @@ void WorldSession::HandleMobileItemUpgradePurchaseOpcode(WorldPacket& recvData)
         case 2: // Weapon speed upgrade
         {
             result = sItemUpgrade->PurchaseWeaponSpdUpgrade(_player, item);
-            if (result)
+            if (result == ItemUpgrade::UPGRADE_OK)
             {
                 const ItemUpgrade::UpgradeStat* cur = sItemUpgrade->FindUpgradeForWeaponSpeed(_player, item);
                 if (cur)
@@ -1018,8 +1038,8 @@ void WorldSession::HandleMobileItemUpgradePurchaseOpcode(WorldPacket& recvData)
     }
 
     WorldPacket data(SMSG_MOBILE_ITEM_UPGRADE_PURCHASE_RESPONSE, 12);
-    data << uint8(result ? 1 : 0);
-    data << uint8(result ? 0 : 5);  // 0 = ok, 5 = internal/unknown failure
+    data << uint8(result == ItemUpgrade::UPGRADE_OK ? 1 : 0);
+    data << uint8(result);
     data << uint16(newRank);
     data << float(newModPct);
     SendPacket(&data);
