@@ -914,12 +914,29 @@ void WorldSession::HandleMobileItemUpgradeQueryOpcode(WorldPacket& recvData)
     // === Breakthrough ===
     bool canBreakthrough = sItemUpgrade->CanBreakthrough(_player, item);
     data << uint8(canBreakthrough ? 1 : 0);
+
+    // IsFullyMaxed: 没有下一级 Tier 且当前 Tier 内所有类别都已满
+    bool isFullyMaxed = false;
+    if (currentTier)
+    {
+        const ItemUpgrade::ItemTier* nextTier = sItemUpgrade->GetNextTier(_player, item);
+        isFullyMaxed = !nextTier && sItemUpgrade->IsCategoryMaxedInTier(_player, item, currentTier, true, true);
+    }
+    data << uint8(isFullyMaxed ? 1 : 0);
     if (canBreakthrough)
     {
         const ItemUpgrade::ItemTier* nextTier = sItemUpgrade->GetNextTier(_player, item);
-        data << uint8(nextTier ? nextTier->breakthroughCostType : 0);
-        data << uint32(nextTier ? static_cast<uint32>(nextTier->breakthroughCostVal1) : 0);
-        data << uint32(nextTier ? static_cast<uint32>(nextTier->breakthroughCostVal2) : 0);
+        uint8 costCount = nextTier ? static_cast<uint8>(nextTier->costs.size()) : 0;
+        data << uint8(costCount);
+        if (nextTier)
+        {
+            for (const auto& cost : nextTier->costs)
+            {
+                data << uint8(static_cast<uint8>(cost.reqType));
+                data << uint32(static_cast<uint32>(cost.reqVal1));
+                data << uint32(static_cast<uint32>(cost.reqVal2));
+            }
+        }
     }
 
     SendPacket(&data);
@@ -933,34 +950,56 @@ void WorldSession::HandleMobileItemBreakthroughOpcode(WorldPacket& recvData)
     Item* item = _player->GetItemByGuid(itemGuid);
     if (!item)
     {
-        WorldPacket data(SMSG_MOBILE_ITEM_BREAKTHROUGH_RESPONSE, 16);
-        data << uint8(0);  // success = false
-        data << uint8(0);  // error: item not found
-        data << uint8(0);  // new tier
-        data << std::string("");  // new tier name
+        WorldPacket data(SMSG_MOBILE_ITEM_BREAKTHROUGH_RESPONSE, 32);
+        data << itemGuid;
+        data << uint8(0);               // success = false
+        data << uint8(1);               // error: item not found
+        data << uint8(0);               // new tier num
+        data << std::string("");        // new tier name
+        data << uint8(0);               // max tier
+        data << uint8(0);               // canBreakthrough
+        data << uint8(0);               // isFullyMaxed
         SendPacket(&data);
         return;
     }
 
     if (!sItemUpgrade->CanBreakthrough(_player, item))
     {
-        WorldPacket data(SMSG_MOBILE_ITEM_BREAKTHROUGH_RESPONSE, 16);
-        data << uint8(0);  // success = false
-        data << uint8(1);  // error: conditions not met
+        WorldPacket data(SMSG_MOBILE_ITEM_BREAKTHROUGH_RESPONSE, 32);
+        data << itemGuid;
+        data << uint8(0);               // success = false
+        data << uint8(2);               // error: conditions not met
         data << uint8(0);
         data << std::string("");
+        data << uint8(0);
+        data << uint8(0);
+        data << uint8(0);
         SendPacket(&data);
         return;
     }
 
     bool result = sItemUpgrade->PerformBreakthrough(_player, item);
     const ItemUpgrade::ItemTier* newTier = sItemUpgrade->GetCurrentTier(_player, item);
+    uint32 itemEntry = item->GetEntry();
+    uint8 maxTier = sItemUpgrade->GetMaxTierNum(itemEntry);
+    bool canBreakthrough = sItemUpgrade->CanBreakthrough(_player, item);
+
+    bool isFullyMaxed = false;
+    if (newTier)
+    {
+        const ItemUpgrade::ItemTier* nextTier = sItemUpgrade->GetNextTier(_player, item);
+        isFullyMaxed = !nextTier && sItemUpgrade->IsCategoryMaxedInTier(_player, item, newTier, true, true);
+    }
 
     WorldPacket data(SMSG_MOBILE_ITEM_BREAKTHROUGH_RESPONSE, 64);
-    data << uint8(result ? 1 : 0);               // success
-    data << uint8(result ? 0 : 2);               // error code (0=ok, 2=internal)
-    data << uint8(newTier ? newTier->tier : 0);  // new tier num
-    data << std::string(newTier ? newTier->name : "");
+    data << itemGuid;
+    data << uint8(result ? 1 : 0);                      // success
+    data << uint8(result ? 0 : 3);                      // error code (0=ok, 3=internal)
+    data << uint8(newTier ? newTier->tier : 0);         // new tier num
+    data << std::string(newTier ? newTier->name : "");  // new tier name
+    data << uint8(maxTier);                             // max tier
+    data << uint8(canBreakthrough ? 1 : 0);             // can breakthrough again?
+    data << uint8(isFullyMaxed ? 1 : 0);                // fully maxed?
     SendPacket(&data);
 }
 
@@ -976,11 +1015,23 @@ void WorldSession::HandleMobileItemUpgradePurchaseOpcode(WorldPacket& recvData)
     Item* item = _player->GetItemByGuid(itemGuid);
     if (!item)
     {
-        WorldPacket data(SMSG_MOBILE_ITEM_UPGRADE_PURCHASE_RESPONSE, 12);
+        WorldPacket data(SMSG_MOBILE_ITEM_UPGRADE_PURCHASE_RESPONSE, 64);
+        data << itemGuid;
         data << uint8(0);       // success = false
         data << uint8(1);       // error: item not found
+        data << uint8(category);
+        data << uint32(statType);
         data << uint16(0);      // new rank
         data << float(0.0f);    // new mod pct
+        data << uint16(0);      // next rank
+        data << float(0.0f);    // next mod pct
+        data << uint8(0);       // isMaxed
+        data << uint8(0);       // canBreakthrough
+        data << uint8(0);       // isFullyMaxed
+        data << uint8(0);       // costType
+        data << uint32(0);      // costVal1
+        data << uint32(0);      // costVal2
+        data << float(0.0f);    // successChance
         SendPacket(&data);
         return;
     }
@@ -988,6 +1039,23 @@ void WorldSession::HandleMobileItemUpgradePurchaseOpcode(WorldPacket& recvData)
     ItemUpgrade::UpgradeResult result = ItemUpgrade::UPGRADE_ERR_INTERNAL;
     uint16 newRank = 0;
     float newModPct = 0.0f;
+    uint16 nextRank = 0;
+    float nextModPct = 0.0f;
+    uint8 isMaxed = 0;
+    uint8 nextCostType = 0;
+    uint32 nextCostVal1 = 0;
+    uint32 nextCostVal2 = 0;
+    float nextSuccessChance = 0.0f;
+
+    auto buildNextInfo = [&](uint16 curRank) {
+        const ItemUpgrade::ItemTier* tier = sItemUpgrade->GetCurrentTier(_player, item);
+        if (tier && tier->endRank > 0 && curRank >= tier->endRank)
+        {
+            isMaxed = 1;
+            return;
+        }
+        nextRank = curRank + 1;
+    };
 
     switch (category)
     {
@@ -1001,6 +1069,23 @@ void WorldSession::HandleMobileItemUpgradePurchaseOpcode(WorldPacket& recvData)
                 {
                     newRank = cur->statRank;
                     newModPct = cur->statModPct;
+                    buildNextInfo(newRank);
+                    if (!isMaxed && nextRank > 0)
+                    {
+                        const ItemUpgrade::UpgradeStat* nextStat = sItemUpgrade->FindUpgradeStat(statType, nextRank);
+                        if (nextStat)
+                        {
+                            nextModPct = nextStat->statModPct;
+                            const ItemUpgrade::StatRequirementContainer* reqs = sItemUpgrade->GetStatRequirements(nextStat, item);
+                            if (reqs && !reqs->empty() && reqs->at(0).reqType != ItemUpgrade::REQ_TYPE_NONE)
+                            {
+                                nextCostType = static_cast<uint8>(reqs->at(0).reqType);
+                                nextCostVal1 = static_cast<uint32>(reqs->at(0).reqVal1);
+                                nextCostVal2 = static_cast<uint32>(reqs->at(0).reqVal2);
+                            }
+                            nextSuccessChance = nextStat->successChance;
+                        }
+                    }
                 }
             }
             break;
@@ -1015,6 +1100,22 @@ void WorldSession::HandleMobileItemUpgradePurchaseOpcode(WorldPacket& recvData)
                 {
                     newRank = cur->statRank;
                     newModPct = cur->statModPct;
+                    buildNextInfo(newRank);
+                    if (!isMaxed && nextRank > 0)
+                    {
+                        const ItemUpgrade::WeaponUpgradeRank* n = sItemUpgrade->FindWeaponDmgRank(nextRank);
+                        if (n)
+                        {
+                            nextModPct = n->statModPct;
+                            if (n->reqType != ItemUpgrade::REQ_TYPE_NONE)
+                            {
+                                nextCostType = n->reqType;
+                                nextCostVal1 = static_cast<uint32>(n->reqVal1);
+                                nextCostVal2 = static_cast<uint32>(n->reqVal2);
+                            }
+                            nextSuccessChance = n->successChance;
+                        }
+                    }
                 }
             }
             break;
@@ -1029,6 +1130,22 @@ void WorldSession::HandleMobileItemUpgradePurchaseOpcode(WorldPacket& recvData)
                 {
                     newRank = cur->statRank;
                     newModPct = cur->statModPct;
+                    buildNextInfo(newRank);
+                    if (!isMaxed && nextRank > 0)
+                    {
+                        const ItemUpgrade::WeaponUpgradeRank* n = sItemUpgrade->FindWeaponSpdRank(nextRank);
+                        if (n)
+                        {
+                            nextModPct = n->statModPct;
+                            if (n->reqType != ItemUpgrade::REQ_TYPE_NONE)
+                            {
+                                nextCostType = n->reqType;
+                                nextCostVal1 = static_cast<uint32>(n->reqVal1);
+                                nextCostVal2 = static_cast<uint32>(n->reqVal2);
+                            }
+                            nextSuccessChance = n->successChance;
+                        }
+                    }
                 }
             }
             break;
@@ -1037,11 +1154,34 @@ void WorldSession::HandleMobileItemUpgradePurchaseOpcode(WorldPacket& recvData)
             break;
     }
 
-    WorldPacket data(SMSG_MOBILE_ITEM_UPGRADE_PURCHASE_RESPONSE, 12);
+    bool canBreakthrough = sItemUpgrade->CanBreakthrough(_player, item);
+
+    // IsFullyMaxed: 没有下一级 Tier 且当前 Tier 内所有类别都已满 → 装备彻底毕业
+    bool isFullyMaxed = false;
+    const ItemUpgrade::ItemTier* currentTier = sItemUpgrade->GetCurrentTier(_player, item);
+    if (currentTier)
+    {
+        const ItemUpgrade::ItemTier* nextTier = sItemUpgrade->GetNextTier(_player, item);
+        isFullyMaxed = !nextTier && sItemUpgrade->IsCategoryMaxedInTier(_player, item, currentTier, true, true);
+    }
+
+    WorldPacket data(SMSG_MOBILE_ITEM_UPGRADE_PURCHASE_RESPONSE, 64);
+    data << itemGuid;
     data << uint8(result == ItemUpgrade::UPGRADE_OK ? 1 : 0);
     data << uint8(result);
+    data << uint8(category);
+    data << uint32(statType);
     data << uint16(newRank);
     data << float(newModPct);
+    data << uint16(nextRank);
+    data << float(nextModPct);
+    data << uint8(isMaxed);
+    data << uint8(canBreakthrough ? 1 : 0);
+    data << uint8(isFullyMaxed ? 1 : 0);
+    data << uint8(nextCostType);
+    data << uint32(nextCostVal1);
+    data << uint32(nextCostVal2);
+    data << float(nextSuccessChance);
     SendPacket(&data);
 }
 
