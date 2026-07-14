@@ -923,19 +923,18 @@ void WorldSession::HandleMobileItemUpgradeQueryOpcode(WorldPacket& recvData)
         isFullyMaxed = !nextTier && sItemUpgrade->IsCategoryMaxedInTier(_player, item, currentTier, true, true);
     }
     data << uint8(isFullyMaxed ? 1 : 0);
-    if (canBreakthrough)
+    // Always send breakthrough costs so client has them cached before
+    // CanBreakthrough transitions from false → true (last stat upgrade).
+    const ItemUpgrade::ItemTier* btNextTier = sItemUpgrade->GetNextTier(_player, item);
+    uint8 costCount = btNextTier ? static_cast<uint8>(btNextTier->costs.size()) : 0;
+    data << uint8(costCount);
+    if (btNextTier)
     {
-        const ItemUpgrade::ItemTier* nextTier = sItemUpgrade->GetNextTier(_player, item);
-        uint8 costCount = nextTier ? static_cast<uint8>(nextTier->costs.size()) : 0;
-        data << uint8(costCount);
-        if (nextTier)
+        for (const auto& cost : btNextTier->costs)
         {
-            for (const auto& cost : nextTier->costs)
-            {
-                data << uint8(static_cast<uint8>(cost.reqType));
-                data << uint32(static_cast<uint32>(cost.reqVal1));
-                data << uint32(static_cast<uint32>(cost.reqVal2));
-            }
+            data << uint8(static_cast<uint8>(cost.reqType));
+            data << uint32(static_cast<uint32>(cost.reqVal1));
+            data << uint32(static_cast<uint32>(cost.reqVal2));
         }
     }
 
@@ -978,6 +977,26 @@ void WorldSession::HandleMobileItemBreakthroughOpcode(WorldPacket& recvData)
         return;
     }
 
+    // Check materials separately to give correct error message to mobile client.
+    // (CanBreakthrough intentionally skips this check so the UI always shows the
+    // breakthrough button when eligible.)
+    const ItemUpgrade::ItemTier* nextTierForCheck = sItemUpgrade->GetNextTier(_player, item);
+    if (nextTierForCheck && !nextTierForCheck->costs.empty() &&
+        !sItemUpgrade->MeetsRequirement(_player, &nextTierForCheck->costs))
+    {
+        WorldPacket data(SMSG_MOBILE_ITEM_BREAKTHROUGH_RESPONSE, 32);
+        data << itemGuid;
+        data << uint8(0);               // success = false
+        data << uint8(4);               // error: missing requirements (→ C# MissingRequirements)
+        data << uint8(0);
+        data << std::string("");
+        data << uint8(0);
+        data << uint8(0);
+        data << uint8(0);
+        SendPacket(&data);
+        return;
+    }
+
     bool result = sItemUpgrade->PerformBreakthrough(_player, item);
     const ItemUpgrade::ItemTier* newTier = sItemUpgrade->GetCurrentTier(_player, item);
     uint32 itemEntry = item->GetEntry();
@@ -994,7 +1013,7 @@ void WorldSession::HandleMobileItemBreakthroughOpcode(WorldPacket& recvData)
     WorldPacket data(SMSG_MOBILE_ITEM_BREAKTHROUGH_RESPONSE, 64);
     data << itemGuid;
     data << uint8(result ? 1 : 0);                      // success
-    data << uint8(result ? 0 : 3);                      // error code (0=ok, 3=internal)
+    data << uint8(result ? 0 : 5);                      // error code (0=ok, 5=internal error → C# InternalError)
     data << uint8(newTier ? newTier->tier : 0);         // new tier num
     data << std::string(newTier ? newTier->name : "");  // new tier name
     data << uint8(maxTier);                             // max tier
