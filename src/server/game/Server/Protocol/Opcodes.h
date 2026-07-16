@@ -1360,7 +1360,10 @@ enum Opcodes : uint16
     SMSG_MOBILE_ITEM_BREAKTHROUGH_RESPONSE                        = 0x532,
     CMSG_MOBILE_ITEM_UPGRADE_PURCHASE                             = 0x533,
     SMSG_MOBILE_ITEM_UPGRADE_PURCHASE_RESPONSE                    = 0x534,
-    NUM_MSG_TYPES                                                 = 0x535
+    CMSG_MOBILE_AFK_GRIND_START                                   = 0x535,
+    SMSG_MOBILE_AFK_GRIND_START_RESPONSE                          = 0x536,
+    SMSG_MOBILE_AFK_GRIND_STOP                                    = 0x537,
+    NUM_MSG_TYPES                                                 = 0x538
 };
 
 enum OpcodeMisc : uint16
