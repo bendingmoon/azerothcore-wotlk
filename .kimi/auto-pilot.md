@@ -61,6 +61,71 @@ Handles gameobject-interaction quests (herbs, ore, chests):
 - Uses `go->GetInteractionDistance()` instead of hardcoded `INTERACTION_DISTANCE`.
 - Anti-repeat via `lastInteractGO` and next-candidate search.
 
+## Use-Item-On-Creature Quests (2026-07-17)
+
+Handles quests credited by using a quest item on a creature (e.g. "wake up
+the sleeping druid with the charm"), previously impossible: the objective is
+`RequiredNpcOrGo > 0`, so it fell into the grind path and either the friendly
+target was never attacked or it was killed before the item could be used.
+
+- **Item identification**: `PlayerbotAI::FindQuestUseItem(quest, creatureEntry, &spellId, strongOnly)`
+  scans `GetInventoryItems()`. Items must be **bound to the quest**
+  (`IsQuestBoundItem`: StartItem / RequiredItemId / ItemDrop) — otherwise a
+  use-item from another quest crediting the same creature entry would hijack
+  the objective and burn the other quest's item (fixed 2026-07-17).
+  Strong match: item spell has `SPELL_EFFECT_KILL_CREDIT`(90)/
+  `KILL_CREDIT2`(134) with `MiscValue == creatureEntry`. Weak fallback
+  (only when `strongOnly == false`): `quest->GetSrcItemId()` (StartItem)
+  whose spell can target a unit — accepts `Targets & TARGET_FLAG_UNIT`
+  OR any effect with `TargetA` object type `TARGET_OBJECT_TYPE_UNIT`
+  (some cast-on-creature spells lack TARGET_FLAG_UNIT, e.g. quest 5441
+  Lazy Peons: item 16114 → spell 19938 "Awaken Peon", dummy effect +
+  SmartAI timed-actionlist CALL_KILLEDMONSTER — strong match impossible,
+  weak match required).
+- **Execution branch**: `NewRpgDoQuestAction::UseQuestItemOnCreatureObjective`
+  in `NewRpgAction.cpp` (called before the GO/grind fallbacks in
+  `DoIncompleteQuest`). Finds target via
+  `NewRpgBaseAction::FindNearestQuestCreature(entry, 80, excludeGuid)`,
+  moves within `SpellInfo::GetMaxRange() - 2`, then sends `CMSG_USE_ITEM`
+  with `TARGET_FLAG_UNIT` (same packet shape as `UseItemAction::UseItem`).
+- **Anti-spam**: `DoQuest.lastUseItemTarget` / `lastUseItemTime` +
+  `useItemRetryTime = 4s`; cleared at every POI reset alongside
+  `lastInteractGO`.
+- **Grind guard**: `GrindTargetValue::needForQuest` (auto-pilot branch only)
+  skips killing a creature when it is a use-item objective and the item is in
+  bags — checked via `FindQuestUseItem(..., strongOnly = true)`, so only a
+  proven KILL_CREDIT item bound to this quest vetoes killing; weak matches
+  still allow the kill path (which also credits in this core).
+- **Not covered yet**: weakened-target variants (use item at low HP),
+  item-on-GO objectives, credit-bunny targets whose entry differs from the
+  visible mob.
+
+## Client Movement Fix (2026-07-17)
+
+Fixed local-player movement during auto-pilot / AFK grind walking through
+terrain/buildings and freeze-then-teleport glitches. Root cause:
+`WMoveComponent.onMoveEvent` routed server-driven `SMSG_MONSTER_MOVE` updates
+for the local player into the manual straight-line branch (ignoring spline
+`PathPoints`, `originalPos`, terrain height; gravity disabled in auto-pilot),
+while the code comment already stated auto-pilot players should use the sync
+path. Changes (Unity client, `D:\Unity\clientproj`):
+
+- `WComponents/Common/WMoveComponent.cs`
+  - New `IsServerControlled` property: local player with `IsAutoPilot || IsAfkGrinding`.
+  - `onMoveEvent` routes server-controlled players into the NPC sync branch
+    (shadow-follow + path points + `TrySetHeight` per step).
+  - `Update()` routes them to `LagSyncUpdate` instead of `PlayerUpdate`.
+  - Removed two leftover `[SPEED_BUG]` `Debug.LogError` diagnostics.
+- `WEntity/Registers/WMoveRegister.cs`
+  - `MonsterMoveResponse` sets `moveArgs.isRun = true` for the server-controlled
+    local player (SMSG_MONSTER_MOVE carries no run/walk flag; auto-pilot
+    movement is always run speed). Without it `IsRun` stays false and the
+    action component plays `STATE_MOVE` (walk) instead of `STATE_RUN`.
+- `WEntity/WPlayer.cs`
+  - `IsAutoPilot` / `IsAfkGrinding` setters now `NavComponent.Interrupt(false)`
+    on entry so a stale client click-to-move navigation cannot resume after
+    the server-driven session ends.
+
 ## Recent Fixes (2026-07-14)
 
 - **Dual-target quest mobs not attacked**: gray quest mobs were filtered out by `isHonorOrXPTarget`. Fixed by skipping that filter only when auto-pilot is active.
