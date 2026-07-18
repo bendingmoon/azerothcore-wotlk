@@ -708,7 +708,7 @@ void WorldSession::HandleMobileItemQuerySingleOpcode(WorldPacket& recvData)
     else
     {
         LOG_DEBUG("network", "WORLD: CMSG_ITEM_QUERY_SINGLE - NO item INFO! (ENTRY: {})", item);
-        WorldPacket queryData(SMSG_ITEM_QUERY_SINGLE_RESPONSE, 4);
+        WorldPacket queryData(SMSG_MOBILE_ITEM_QUERY_SINGLE_RESPONSE, 4);
         queryData << uint32(item | 0x80000000);
         SendPacket(&queryData);
     }
@@ -804,9 +804,9 @@ void WorldSession::HandleMobileItemUpgradeQueryOpcode(WorldPacket& recvData)
         data << float(nextModPct);
         data << uint8(isMaxed ? 1 : 0);
 
-        if (!isMaxed && nextRank > 0)
+        if (!isMaxed)
         {
-            const ItemUpgrade::UpgradeStat* nextStat = sItemUpgrade->FindUpgradeStat(sl.statType, nextRank);
+            const ItemUpgrade::UpgradeStat* nextStat = nextRank > 0 ? sItemUpgrade->FindUpgradeStat(sl.statType, nextRank) : nullptr;
             if (nextStat)
             {
                 const ItemUpgrade::StatRequirementContainer* reqs = sItemUpgrade->GetStatRequirements(nextStat, item);
@@ -855,9 +855,9 @@ void WorldSession::HandleMobileItemUpgradeQueryOpcode(WorldPacket& recvData)
         data << float(dmgNextPct);
         data << uint8(dmgMaxed ? 1 : 0);
 
-        if (!dmgMaxed && dmgNextRank > 0)
+        if (!dmgMaxed)
         {
-            const ItemUpgrade::WeaponUpgradeRank* n = sItemUpgrade->FindWeaponDmgRank(dmgNextRank);
+            const ItemUpgrade::WeaponUpgradeRank* n = dmgNextRank > 0 ? sItemUpgrade->FindWeaponDmgRank(dmgNextRank) : nullptr;
             if (n && n->reqType != ItemUpgrade::REQ_TYPE_NONE)
                 writeCost(data, n->reqType, static_cast<uint32>(n->reqVal1), static_cast<uint32>(n->reqVal2));
             else
@@ -896,9 +896,9 @@ void WorldSession::HandleMobileItemUpgradeQueryOpcode(WorldPacket& recvData)
         data << float(spdNextPct);
         data << uint8(spdMaxed ? 1 : 0);
 
-        if (!spdMaxed && spdNextRank > 0)
+        if (!spdMaxed)
         {
-            const ItemUpgrade::WeaponUpgradeRank* n = sItemUpgrade->FindWeaponSpdRank(spdNextRank);
+            const ItemUpgrade::WeaponUpgradeRank* n = spdNextRank > 0 ? sItemUpgrade->FindWeaponSpdRank(spdNextRank) : nullptr;
             if (n && n->reqType != ItemUpgrade::REQ_TYPE_NONE)
                 writeCost(data, n->reqType, static_cast<uint32>(n->reqVal1), static_cast<uint32>(n->reqVal2));
             else
@@ -952,7 +952,7 @@ void WorldSession::HandleMobileItemBreakthroughOpcode(WorldPacket& recvData)
         WorldPacket data(SMSG_MOBILE_ITEM_BREAKTHROUGH_RESPONSE, 32);
         data << itemGuid;
         data << uint8(0);               // success = false
-        data << uint8(1);               // error: item not found
+        data << uint8(ItemUpgrade::UPGRADE_ERR_ITEM_NOT_FOUND); // error: item not found
         data << uint8(0);               // new tier num
         data << std::string("");        // new tier name
         data << uint8(0);               // max tier
@@ -967,7 +967,7 @@ void WorldSession::HandleMobileItemBreakthroughOpcode(WorldPacket& recvData)
         WorldPacket data(SMSG_MOBILE_ITEM_BREAKTHROUGH_RESPONSE, 32);
         data << itemGuid;
         data << uint8(0);               // success = false
-        data << uint8(2);               // error: conditions not met
+        data << uint8(ItemUpgrade::UPGRADE_ERR_VALIDATION);     // error: conditions not met
         data << uint8(0);
         data << std::string("");
         data << uint8(0);
@@ -987,7 +987,7 @@ void WorldSession::HandleMobileItemBreakthroughOpcode(WorldPacket& recvData)
         WorldPacket data(SMSG_MOBILE_ITEM_BREAKTHROUGH_RESPONSE, 32);
         data << itemGuid;
         data << uint8(0);               // success = false
-        data << uint8(4);               // error: missing requirements (→ C# MissingRequirements)
+        data << uint8(ItemUpgrade::UPGRADE_ERR_REQUIREMENTS);   // error: missing requirements (→ C# MissingRequirements)
         data << uint8(0);
         data << std::string("");
         data << uint8(0);
@@ -1013,7 +1013,7 @@ void WorldSession::HandleMobileItemBreakthroughOpcode(WorldPacket& recvData)
     WorldPacket data(SMSG_MOBILE_ITEM_BREAKTHROUGH_RESPONSE, 64);
     data << itemGuid;
     data << uint8(result ? 1 : 0);                      // success
-    data << uint8(result ? 0 : 5);                      // error code (0=ok, 5=internal error → C# InternalError)
+    data << uint8(result ? ItemUpgrade::UPGRADE_OK : ItemUpgrade::UPGRADE_ERR_INTERNAL); // error code (0=ok, 5=internal error → C# InternalError)
     data << uint8(newTier ? newTier->tier : 0);         // new tier num
     data << std::string(newTier ? newTier->name : "");  // new tier name
     data << uint8(maxTier);                             // max tier
@@ -1066,10 +1066,18 @@ void WorldSession::HandleMobileItemUpgradePurchaseOpcode(WorldPacket& recvData)
     uint32 nextCostVal2 = 0;
     float nextSuccessChance = 0.0f;
 
-    auto buildNextInfo = [&](uint16 curRank) {
+    auto buildNextInfo = [&](uint16 curRank, bool nextRankExists) {
         const ItemUpgrade::ItemTier* tier = sItemUpgrade->GetCurrentTier(_player, item);
         if (tier && tier->endRank > 0 && curRank >= tier->endRank)
         {
+            isMaxed = 1;
+            return;
+        }
+        if (!nextRankExists)
+        {
+            // Rank row missing: report maxed so the client does not
+            // show a phantom next rank with 0%/0-cost.
+            nextModPct = newModPct;
             isMaxed = 1;
             return;
         }
@@ -1088,10 +1096,10 @@ void WorldSession::HandleMobileItemUpgradePurchaseOpcode(WorldPacket& recvData)
                 {
                     newRank = cur->statRank;
                     newModPct = cur->statModPct;
-                    buildNextInfo(newRank);
+                    const ItemUpgrade::UpgradeStat* nextStat = sItemUpgrade->FindUpgradeStat(statType, newRank + 1);
+                    buildNextInfo(newRank, nextStat != nullptr);
                     if (!isMaxed && nextRank > 0)
                     {
-                        const ItemUpgrade::UpgradeStat* nextStat = sItemUpgrade->FindUpgradeStat(statType, nextRank);
                         if (nextStat)
                         {
                             nextModPct = nextStat->statModPct;
@@ -1119,10 +1127,10 @@ void WorldSession::HandleMobileItemUpgradePurchaseOpcode(WorldPacket& recvData)
                 {
                     newRank = cur->statRank;
                     newModPct = cur->statModPct;
-                    buildNextInfo(newRank);
+                    const ItemUpgrade::WeaponUpgradeRank* n = sItemUpgrade->FindWeaponDmgRank(newRank + 1);
+                    buildNextInfo(newRank, n != nullptr);
                     if (!isMaxed && nextRank > 0)
                     {
-                        const ItemUpgrade::WeaponUpgradeRank* n = sItemUpgrade->FindWeaponDmgRank(nextRank);
                         if (n)
                         {
                             nextModPct = n->statModPct;
@@ -1149,10 +1157,10 @@ void WorldSession::HandleMobileItemUpgradePurchaseOpcode(WorldPacket& recvData)
                 {
                     newRank = cur->statRank;
                     newModPct = cur->statModPct;
-                    buildNextInfo(newRank);
+                    const ItemUpgrade::WeaponUpgradeRank* n = sItemUpgrade->FindWeaponSpdRank(newRank + 1);
+                    buildNextInfo(newRank, n != nullptr);
                     if (!isMaxed && nextRank > 0)
                     {
-                        const ItemUpgrade::WeaponUpgradeRank* n = sItemUpgrade->FindWeaponSpdRank(nextRank);
                         if (n)
                         {
                             nextModPct = n->statModPct;
