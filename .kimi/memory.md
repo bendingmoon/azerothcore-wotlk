@@ -16,6 +16,7 @@ This file is the curated index for Kimi Code CLI. Detailed feature memories live
 | [auto-pilot.md](auto-pilot.md) | Real-player quest automation (auto-pilot) |
 | [afk-grind.md](afk-grind.md) | In-place mob farming (AFK grind) |
 | [mod-item-upgrade-review-fixes.md](mod-item-upgrade-review-fixes.md) | Item upgrade 全链路审查与修复（2026-07-18，高危7项+中危+C#，Lua 留用户） |
+| [lfg-proposal-veto-fix.md](lfg-proposal-veto-fix.md) | LFG 匹配被 OnPlayerbotCheckLFGQueue 否决（真人带 botAI 误判）+ 替补 bot 等级死循环修复（2026-07-20） |
 | [other-memories.md](other-memories.md) | Index of original Claude Code memories |
 
 ## Memory Management Rule
