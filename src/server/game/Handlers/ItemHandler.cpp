@@ -937,6 +937,10 @@ void WorldSession::HandleMobileItemUpgradeQueryOpcode(WorldPacket& recvData)
             data << uint32(static_cast<uint32>(cost.reqVal2));
         }
     }
+    // 突破后可获得的词条附魔ID (SpellItemEnchantment), 0=无
+    data << uint32(btNextTier ? btNextTier->breakthroughEnchantId : 0);
+    // 当前已拥有的突破词条附魔ID (写在 PROP_ENCHANTMENT_SLOT_1), 0=无
+    data << uint32(item->GetEnchantmentId(PROP_ENCHANTMENT_SLOT_1));
 
     SendPacket(&data);
 }
@@ -958,6 +962,7 @@ void WorldSession::HandleMobileItemBreakthroughOpcode(WorldPacket& recvData)
         data << uint8(0);               // max tier
         data << uint8(0);               // canBreakthrough
         data << uint8(0);               // isFullyMaxed
+        data << uint32(0);              // granted breakthrough enchant id
         SendPacket(&data);
         return;
     }
@@ -973,6 +978,7 @@ void WorldSession::HandleMobileItemBreakthroughOpcode(WorldPacket& recvData)
         data << uint8(0);
         data << uint8(0);
         data << uint8(0);
+        data << uint32(0);              // granted breakthrough enchant id
         SendPacket(&data);
         return;
     }
@@ -993,6 +999,7 @@ void WorldSession::HandleMobileItemBreakthroughOpcode(WorldPacket& recvData)
         data << uint8(0);
         data << uint8(0);
         data << uint8(0);
+        data << uint32(0);              // granted breakthrough enchant id
         SendPacket(&data);
         return;
     }
@@ -1019,6 +1026,8 @@ void WorldSession::HandleMobileItemBreakthroughOpcode(WorldPacket& recvData)
     data << uint8(maxTier);                             // max tier
     data << uint8(canBreakthrough ? 1 : 0);             // can breakthrough again?
     data << uint8(isFullyMaxed ? 1 : 0);                // fully maxed?
+    // 突破成功时实际发放的词条附魔ID, 0=无 (取新 tier 的配置)
+    data << uint32(result && newTier ? newTier->breakthroughEnchantId : 0);
     SendPacket(&data);
 }
 
