@@ -962,6 +962,7 @@ void StaticTransport::RelocateToProgress(uint32 progress)
         // update position to new one
         // also adding simplified orientation rotation here
         UpdatePosition(pos.x, pos.y, pos.z, NormalizeOrientation(GetStationaryO() + oriRotAngle));
+        SetTransportPathRotation(pos.x, pos.y, pos.z, NormalizeOrientation(GetStationaryO() + oriRotAngle));
     }
 }
 
