@@ -194,13 +194,13 @@ void Channel::JoinChannel(Player* player, std::string const& pass)
         return;
     }
     
-    if (GetChannelId()==0 && player->GetLevel()<10)
-    {
-        WorldPacket data;
-        MakeNotInLfg(&data);
-        SendToOne(&data, guid);
-        return;
-    }
+    // if (GetChannelId()==0 && player->GetLevel()<10)
+    // {
+    //     WorldPacket data;
+    //     MakeNotInLfg(&data);
+    //     SendToOne(&data, guid);
+    //     return;
+    // }
 
     player->JoinedChannel(this);
 
@@ -802,6 +802,13 @@ void Channel::Say(ObjectGuid guid, std::string const& what, uint32 lang)
     }
 
     Player* player = pinfo.plrPtr;
+    if (player->GetLevel() < 10)
+    {
+        WorldPacket data;
+        MakeMuted(&data);
+        SendToOne(&data, guid);
+        return;
+    }
     WorldPacket data;
 
     if (player)
