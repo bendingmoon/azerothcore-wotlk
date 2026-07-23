@@ -117,7 +117,7 @@ void WorldSession::SendAuctionOwnerNotification(AuctionEntry* auction)
 void WorldSession::HandleAuctionSellItem(WorldPacket& recvData)
 {
     ObjectGuid auctioneer;
-    uint32 itemsCount, etime, bid, buyout;
+    uint32 itemsCount, etime, bid, buyout,faction,spawnid;
     recvData >> auctioneer;
     recvData >> itemsCount;
 
@@ -158,15 +158,23 @@ void WorldSession::HandleAuctionSellItem(WorldPacket& recvData)
         SendAuctionCommandResult(0, AUCTION_SELL_ITEM, ERR_AUCTION_DATABASE_ERROR);
         return;
     }
-
-    Creature* creature = GetPlayer()->GetNPCIfCanInteractWith(auctioneer, UNIT_NPC_FLAG_AUCTIONEER);
-    if (!creature)
+    if (auctioneer)
     {
-        LOG_DEBUG("network", "WORLD: HandleAuctionSellItem - Unit ({}) not found or you can't interact with him.", auctioneer.ToString());
-        return;
+        Creature* creature = GetPlayer()->GetNPCIfCanInteractWith(auctioneer, UNIT_NPC_FLAG_AUCTIONEER);
+        if (!creature)
+        {
+           LOG_DEBUG("network", "WORLD: HandleAuctionSellItem - Unit ({}) not found or you can't interact with him.", auctioneer.ToString());
+           return;
+        }
+        faction=creature->GetFaction();
+        spawnid=  creature->GetSpawnId();
+        LOG_DEBUG("network", "WORLD: HandleAuctionSellItem - faction ({}) spawnid:{}", faction,spawnid);
+    }else{
+        recvData >> faction;
+        recvData >> spawnid;
     }
+    AuctionHouseEntry const* auctionHouseEntry = AuctionHouseMgr::GetAuctionHouseEntryFromFactionTemplate(faction);
 
-    AuctionHouseEntry const* auctionHouseEntry = AuctionHouseMgr::GetAuctionHouseEntryFromFactionTemplate(creature->GetFaction());
     if (!auctionHouseEntry)
     {
         LOG_DEBUG("network", "WORLD: HandleAuctionSellItem - Unit ({}) has wrong faction.", auctioneer.ToString());
@@ -253,7 +261,7 @@ void WorldSession::HandleAuctionSellItem(WorldPacket& recvData)
         Item* item = items[i];
 
         uint32 auctionTime = uint32(etime * sWorld->getRate(RATE_AUCTION_TIME));
-        AuctionHouseObject* auctionHouse = sAuctionMgr->GetAuctionsMap(creature->GetFaction());
+        AuctionHouseObject* auctionHouse = sAuctionMgr->GetAuctionsMap(faction);
 
         uint32 deposit = sAuctionMgr->GetAuctionDeposit(auctionHouseEntry, etime, item, finalCount);
         if (!_player->HasEnoughMoney(deposit))
@@ -271,7 +279,7 @@ void WorldSession::HandleAuctionSellItem(WorldPacket& recvData)
             AH->houseId = AuctionHouseId::Neutral;
         else
         {
-            CreatureData const* auctioneerData = sObjectMgr->GetCreatureData(creature->GetSpawnId());
+            CreatureData const* auctioneerData = sObjectMgr->GetCreatureData(spawnid);
             if (!auctioneerData)
             {
                 LOG_ERROR("network.opcode", "Data for auctioneer not found ({})", auctioneer.ToString());
@@ -420,24 +428,31 @@ void WorldSession::HandleAuctionPlaceBid(WorldPacket& recvData)
     ObjectGuid auctioneer;
     uint32 auctionId;
     uint32 price;
+    uint32 faction;
     recvData >> auctioneer;
     recvData >> auctionId >> price;
 
     if (!auctionId || !price)
         return;                                             //check for cheaters
 
-    Creature* creature = GetPlayer()->GetNPCIfCanInteractWith(auctioneer, UNIT_NPC_FLAG_AUCTIONEER);
-    if (!creature)
+    if (auctioneer)
     {
-        LOG_DEBUG("network", "WORLD: HandleAuctionPlaceBid - Unit ({}) not found or you can't interact with him.", auctioneer.ToString());
-        return;
+        Creature* creature = GetPlayer()->GetNPCIfCanInteractWith(auctioneer, UNIT_NPC_FLAG_AUCTIONEER);
+        if (!creature)
+        {
+            LOG_DEBUG("network", "WORLD: HandleAuctionPlaceBid - Unit ({}) not found or you can't interact with him.", auctioneer.ToString());
+            return;
+        }
+        faction= creature->GetFaction();
+    } else {
+        recvData >> faction; 
     }
 
     // remove fake death
     if (GetPlayer()->HasUnitState(UNIT_STATE_DIED))
         GetPlayer()->RemoveAurasByType(SPELL_AURA_FEIGN_DEATH);
 
-    AuctionHouseObject* auctionHouse = sAuctionMgr->GetAuctionsMap(creature->GetFaction());
+    AuctionHouseObject* auctionHouse = sAuctionMgr->GetAuctionsMap(faction);
 
     AuctionEntry* auction = auctionHouse->GetAuction(auctionId);
     Player* player = GetPlayer();
@@ -574,22 +589,28 @@ void WorldSession::HandleAuctionPlaceBid(WorldPacket& recvData)
 void WorldSession::HandleAuctionRemoveItem(WorldPacket& recvData)
 {
     ObjectGuid auctioneer;
-    uint32 auctionId;
+    uint32 auctionId, faction;
     recvData >> auctioneer;
     recvData >> auctionId;
 
-    Creature* creature = GetPlayer()->GetNPCIfCanInteractWith(auctioneer, UNIT_NPC_FLAG_AUCTIONEER);
-    if (!creature)
+    if (auctioneer)
     {
-        LOG_DEBUG("network", "WORLD: HandleAuctionRemoveItem - Unit ({}) not found or you can't interact with him.", auctioneer.ToString());
-        return;
+        Creature* creature = GetPlayer()->GetNPCIfCanInteractWith(auctioneer, UNIT_NPC_FLAG_AUCTIONEER);
+        if (!creature)
+        {
+            LOG_DEBUG("network", "WORLD: HandleAuctionRemoveItem - Unit ({}) not found or you can't interact with him.", auctioneer.ToString());
+            return;
+        }
+        faction = creature->GetFaction();
+    } else {
+        recvData >> faction;
     }
 
     // remove fake death
     if (GetPlayer()->HasUnitState(UNIT_STATE_DIED))
         GetPlayer()->RemoveAurasByType(SPELL_AURA_FEIGN_DEATH);
 
-    AuctionHouseObject* auctionHouse = sAuctionMgr->GetAuctionsMap(creature->GetFaction());
+    AuctionHouseObject* auctionHouse = sAuctionMgr->GetAuctionsMap(faction);
 
     AuctionEntry* auction = auctionHouse->GetAuction(auctionId);
     Player* player = GetPlayer();
@@ -647,22 +668,33 @@ void WorldSession::HandleAuctionListBidderItems(WorldPacket& recvData)
     ObjectGuid guid;                                            //NPC guid
     uint32 listfrom;                                        //page of auctions
     uint32 outbiddedCount;                                  //count of outbidded auctions
-
+    uint32 faction;
     recvData >> guid;
     recvData >> listfrom;                                  // not used in fact (this list not have page control in client)
     recvData >> outbiddedCount;
-    if (recvData.size() != (16 + outbiddedCount * 4))
-    {
-        LOG_ERROR("network.opcode", "Client sent bad opcode!!! with count: {} and size : {} (must be: {})", outbiddedCount, (unsigned long)recvData.size(), (16 + outbiddedCount * 4));
-        outbiddedCount = 0;
-    }
 
-    Creature* creature = GetPlayer()->GetNPCIfCanInteractWith(guid, UNIT_NPC_FLAG_AUCTIONEER);
-    if (!creature)
+    if (guid)
     {
-        LOG_DEBUG("network", "WORLD: HandleAuctionListBidderItems - Unit ({}) not found or you can't interact with him.", guid.ToString());
-        recvData.rfinish();
-        return;
+        if (recvData.size() != (16 + outbiddedCount * 4))
+        {
+            LOG_ERROR("network.opcode", "Client sent bad opcode!!! with count: {} and size : {} (must be: {})", outbiddedCount, (unsigned long)recvData.size(), (16 + outbiddedCount * 4));
+            outbiddedCount = 0;
+        }
+        Creature* creature = GetPlayer()->GetNPCIfCanInteractWith(guid, UNIT_NPC_FLAG_AUCTIONEER);
+        if (!creature)
+        {
+            LOG_DEBUG("network", "WORLD: HandleAuctionListBidderItems - Unit ({}) not found or you can't interact with him.", guid.ToString());
+            recvData.rfinish();
+            return;
+        }
+        faction = creature->GetFaction();
+    } else {
+        if (recvData.size() != (20 + outbiddedCount * 4))
+        {
+          LOG_ERROR("network.opcode", "Client sent bad opcode!!! with count: {} and size : {} (must be: {})", outbiddedCount, (unsigned long)recvData.size(), (20 + outbiddedCount * 4));
+          outbiddedCount = 0;
+        }
+        recvData >> faction;
     }
 
     // Arbitrary cap, can be adjusted if needed
@@ -673,7 +705,7 @@ void WorldSession::HandleAuctionListBidderItems(WorldPacket& recvData)
     if (GetPlayer()->HasUnitState(UNIT_STATE_DIED))
         GetPlayer()->RemoveAurasByType(SPELL_AURA_FEIGN_DEATH);
 
-    AuctionHouseEntry const* ahEntry = AuctionHouseMgr::GetAuctionHouseEntryFromFactionTemplate(creature->GetFaction());
+    AuctionHouseEntry const* ahEntry = AuctionHouseMgr::GetAuctionHouseEntryFromFactionTemplate(faction);
     if (!ahEntry)
         return;
 
@@ -697,20 +729,26 @@ void WorldSession::HandleAuctionListBidderItems(WorldPacket& recvData)
 void WorldSession::HandleAuctionListOwnerItems(WorldPacket& recvData)
 {
     ObjectGuid guid;
-    uint32 listfrom;
+    uint32 listfrom, faction;
 
     recvData >> guid;
     recvData >> listfrom;       // not used in fact (this list does not have page control in client)
 
-    Creature* creature = GetPlayer()->GetNPCIfCanInteractWith(guid, UNIT_NPC_FLAG_AUCTIONEER);
-    if (!creature)
-        return;
+    if (guid)
+    {
+        Creature* creature = GetPlayer()->GetNPCIfCanInteractWith(guid, UNIT_NPC_FLAG_AUCTIONEER);
+        if (!creature)
+            return;
+        faction = creature->GetFaction();
+    }else{
+        recvData >> faction;
+    }
 
     // remove fake death
     if (GetPlayer()->HasUnitState(UNIT_STATE_DIED))
         GetPlayer()->RemoveAurasByType(SPELL_AURA_FEIGN_DEATH);
 
-    AuctionHouseEntry const* ahEntry = AuctionHouseMgr::GetAuctionHouseEntryFromFactionTemplate(creature->GetFaction());
+    AuctionHouseEntry const* ahEntry = AuctionHouseMgr::GetAuctionHouseEntryFromFactionTemplate(faction);
     if (!ahEntry)
         return;
 
@@ -724,7 +762,7 @@ void WorldSession::HandleAuctionListItems(WorldPacket& recvData)
 {
     std::string searchedname;
     uint8 levelmin, levelmax, usable;
-    uint32 listfrom, auctionSlotID, auctionMainCategory, auctionSubCategory, quality;
+    uint32 listfrom, auctionSlotID, auctionMainCategory, auctionSubCategory, quality, faction;
     ObjectGuid guid;
 
     recvData >> guid;
@@ -765,15 +803,22 @@ void WorldSession::HandleAuctionListItems(WorldPacket& recvData)
 
     wstrToLower(wsearchedname);
 
-    Creature* creature = GetPlayer()->GetNPCIfCanInteractWith(guid, UNIT_NPC_FLAG_AUCTIONEER);
-    if (!creature)
-        return;
+    if (guid)
+    {
+        Creature* creature = GetPlayer()->GetNPCIfCanInteractWith(guid, UNIT_NPC_FLAG_AUCTIONEER);
+        if (!creature)
+           return;
+        faction = creature->GetFaction();
+        LOG_DEBUG("network", "WORLD: Auction List - faction={}", faction);
+    } else {
+        recvData>>faction;//手游版增加
+    }
 
     // remove fake death
     if (_player->HasUnitState(UNIT_STATE_DIED))
         _player->RemoveAurasByType(SPELL_AURA_FEIGN_DEATH);
 
-    AuctionHouseEntry const* ahEntry = AuctionHouseMgr::GetAuctionHouseEntryFromFactionTemplate(creature->GetFaction());
+    AuctionHouseEntry const* ahEntry = AuctionHouseMgr::GetAuctionHouseEntryFromFactionTemplate(faction);
     if (!ahEntry)
         return;
 
