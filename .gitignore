@@ -117,3 +117,6 @@ local.properties
 # ==================
 .cache
 compile_commands.json
+
+# SVN metadata folders (this fork uses git)
+.svn/
