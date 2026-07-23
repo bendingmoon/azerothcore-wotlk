@@ -986,10 +986,10 @@ void WorldSession::HandleInspectOpcode(WorldPacket& recv_data)
         return;
     }
 
-    if (!GetPlayer()->IsWithinDistInMap(player, INSPECT_DISTANCE, false))
-    {
-        return;
-    }
+    // if (!GetPlayer()->IsWithinDistInMap(player, INSPECT_DISTANCE, false))
+    // {
+    //     return;
+    // }
 
     if (GetPlayer()->IsValidAttackTarget(player))
     {
