@@ -11243,7 +11243,7 @@ void ObjectMgr::LoadAowowCreatures()
     {
         Field* fields = result->Fetch();
 
-        uint16 entry = fields[0].Get<uint16>();
+        uint32 entry = fields[0].Get<uint32>();
 
         AowowCreature& data = _aowowCreatureStore[entry];  
         data.name_loc0 = fields[1].Get<std::string>();
@@ -11276,16 +11276,16 @@ void ObjectMgr::LoadAowowCreatureSpawns()
         return;
     }
 
-    _aowowCreatureSpawnStore.rehash(result->GetRowCount());
     uint32 count = 0;
 
     do
     {
         Field* fields = result->Fetch();
 
-        int16 entry = fields[0].Get<int16>();
-
-        AowowCreatureSpawn& data = _aowowCreatureSpawnStore[entry];  
+        // guid(fields[0])不作为键使用：aowow_spawns主键为(guid,type,floor)，
+        // creature/gameobject guid空间独立会碰撞，且原int16键会截断超大guid(guid已超300万)。
+        // 查询只按(areaId,type)索引，顺序存储即可。deque的emplace_back不使元素引用失效，索引存指针安全。
+        AowowCreatureSpawn& data = _aowowCreatureSpawnStore.emplace_back();
         data.type = fields[1].Get<uint32>();
         data.typeId = fields[2].Get<uint32>();
         data.areaId = fields[3].Get<uint32>();

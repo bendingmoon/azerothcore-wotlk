@@ -1537,7 +1537,7 @@ public:
     [[nodiscard]] uint32 GetQuestMoneyReward(uint8 level, uint32 questMoneyDifficulty) const;
 
     const std::vector<AowowCreatureSpawn*>* GetAowowCreatureSpawnsByAreaAndType(uint32 areaId, uint32 type) const;
-    AowowCreature const* GetAowowCreature(uint16 id)
+    AowowCreature const* GetAowowCreature(uint32 id)
     {
         AowowCreatureContainer::iterator itr = _aowowCreatureStore.find(id);
         if (itr != _aowowCreatureStore.end())
@@ -1744,11 +1744,14 @@ private:
     };
     std::vector<GameobjectInstanceSavedState> GameobjectInstanceSavedStateList;
 
-    typedef std::unordered_map<uint16, AowowCreature> AowowCreatureContainer;
+    typedef std::unordered_map<uint32, AowowCreature> AowowCreatureContainer;
     AowowCreatureContainer _aowowCreatureStore;
 
-    // Benchmarked: Faster than std::map (insert/find)
-    typedef std::unordered_map<int16, AowowCreatureSpawn> AowowCreatureSpawnContainer;
+    // 刷怪点顺序存储：查询只按 (areaId, type) 走 _aowowCreatureSpawnIndex，不需要 guid 键。
+    // 注意：aowow_spawns 主键是 (guid,type,floor)，creature/gameobject 的 guid 空间相互独立，
+    // 历史上曾以 guid(int16) 做 unordered_map 键，同值 guid 及 int16 截断(guid 最大超300万)
+    // 导致同槽覆盖、大量 spawn 丢失/错位。deque 的 emplace_back 不使元素引用失效，索引存指针安全。
+    typedef std::deque<AowowCreatureSpawn> AowowCreatureSpawnContainer;
     AowowCreatureSpawnContainer _aowowCreatureSpawnStore;
     std::unordered_map<uint32, std::unordered_map<uint32, std::vector<AowowCreatureSpawn*>>> _aowowCreatureSpawnIndex;
 };

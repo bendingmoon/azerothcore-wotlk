@@ -21,6 +21,7 @@ This file is the curated index for Kimi Code CLI. Detailed feature memories live
 | [item-upgrade-config.md](item-upgrade-config.md) | 装备升级配置文档（可直接给配置人员）：6 类表说明、req_type/stat_type 完整枚举、配档注意事项（2026-07-21） |
 | [lfg-proposal-veto-fix.md](lfg-proposal-veto-fix.md) | LFG 匹配被 OnPlayerbotCheckLFGQueue 否决（真人带 botAI 误判）+ 替补 bot 等级死循环修复（2026-07-20） |
 | [lfg-bot-whisper-teleport-fix.md](lfg-bot-whisper-teleport-fix.md) | 禁止 bot 向真人发悄悄话 + LFG 等待匹配期间禁止随机传送（2026-07-21） |
+| [lfg-requeue-rolecheck-fix.md](lfg-requeue-rolecheck-fix.md) | LFG 踢人补位重排队 WRONG_ROLES：bot 职责检查改用 LFG 已存职责应答 + 前端抑制重复职责框（2026-07-24） |
 | [other-memories.md](other-memories.md) | Index of original Claude Code memories |
 
 ## Memory Management Rule

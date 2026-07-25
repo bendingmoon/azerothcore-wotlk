@@ -510,8 +510,11 @@ void WorldSession::HandleAowowCreatureAreaObjectQuery(WorldPacket& recvData)
     const std::vector<AowowCreatureSpawn*>* spawns = sObjectMgr->GetAowowCreatureSpawnsByAreaAndType(areaId, type);
     if (!spawns)
     {
-        // 没有匹配的刷怪点，发送空响应
-        WorldPacket data(SMSG_MOBILE_CREATURE_QUERY_AOWOW_AREAOBJECT_RESPONSE, 4);
+        // 没有匹配的刷怪点，发送空响应（回显查询参数，客户端按此匹配回调）
+        WorldPacket data(SMSG_MOBILE_CREATURE_QUERY_AOWOW_AREAOBJECT_RESPONSE, 16);
+        data << areaId;
+        data << type;
+        data << npcflag;
         data << uint32(0);
         SendPacket(&data);
         return;
@@ -532,7 +535,7 @@ void WorldSession::HandleAowowCreatureAreaObjectQuery(WorldPacket& recvData)
     std::vector<ResponseCreatureInfo> results;
     for (const AowowCreatureSpawn* spawn : *spawns)
     {
-        uint16 creatureId = static_cast<uint16>(spawn->typeId);
+        uint32 creatureId = spawn->typeId;
         AowowCreature const* aowowCreature = sObjectMgr->GetAowowCreature(creatureId);
         if (aowowCreature){
             // 根据 filterFlag 决定是否过滤掉 npcflag == 0 的生物
@@ -551,7 +554,10 @@ void WorldSession::HandleAowowCreatureAreaObjectQuery(WorldPacket& recvData)
             });
         }
     }
-    WorldPacket data(SMSG_MOBILE_CREATURE_QUERY_AOWOW_AREAOBJECT_RESPONSE, 4 + results.size() * (4+4+4+1+1+4 + 3*4 + 64*3));
+    WorldPacket data(SMSG_MOBILE_CREATURE_QUERY_AOWOW_AREAOBJECT_RESPONSE, 12 + 4 + results.size() * (4+4+4+1+1+4 + 3*4 + 64*3));
+    data << areaId;   // 回显查询参数，客户端按此匹配等待中的回调
+    data << type;
+    data << npcflag;
     data << uint32(results.size());
     for (const auto& info : results)
     {
