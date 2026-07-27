@@ -126,6 +126,32 @@ path. Changes (Unity client, `D:\Unity\clientproj`):
     on entry so a stale client click-to-move navigation cannot resume after
     the server-driven session ends.
 
+## Recent Fixes (2026-07-26)
+
+- **Real player auto-learned professions during auto-pilot / AFK grind**: root cause was
+  `gossip hello` trigger (CMSG_GOSSIP_HELLO / CMSG_QUESTGIVER_HELLO, PlayerbotAI.cpp:165-166)
+  → `WorldPacketHandlerStrategy` → `TrainerAction`. `TrainerAction::Execute`'s guard relied on
+  `HasActivePlayerMaster()`, but auto-pilot players have no master, so with
+  `AiPlayerbot.AllowLearnTrainerSpells = true` (default) every teachable spell — including
+  tradeskill (生活技能) trainer spells — was auto-learned.
+- **Fix**: hard `botAI->IsRealPlayer()` early-return gates added to all adverse auto actions:
+  - `TrainerAction::Execute` (auto-learn spells, the reported bug)
+  - `TalkToQuestGiverAction::ProcessQuest` + `TurnInQueryQuestAction::Execute` (auto turn-in /
+    auto reward pick; auto-pilot design is manual turn-in, NewRpgAction.cpp:931)
+  - `AcceptInvitationAction` (group invite), `GuildAcceptAction`, `PetitionSignAction`,
+    `ArenaTeamAcceptAction` (auto-accept invites)
+  - `TradeStatusAction::Execute` (auto-accept trades)
+  - `LootRollAction::Execute` + `MasterLootRollAction::isUseful` (auto need/greed rolls)
+  - `EquipUpgradesPacketAction::Execute` (auto-equip loot; AutoEquipUpgradeLoot defaults true)
+  - `LfgAcceptAction::Execute` (auto-accept LFG proposals)
+  - `ReadyCheckAction::ReadyCheck` (auto ready checks)
+  - `BGStatusAction::Execute` (auto-enter battlegrounds)
+  - `AutoMaintenanceOnLevelupAction::Execute` (bot-style levelup broadcast; learn/talent/gear
+    sub-actions were already `IsRandomBot`-gated and safe)
+- Already safe (had `IsRealPlayer`/`IsRandomBot` gates): `ReleaseSpiritAction`,
+  `ReviveFromCorpseAction`, `AreaTriggerAction`, `LfgJoinAction`, `LeaveGroupAction`,
+  `AutoMaintenanceOnLevelupAction` learn/talent/gear sub-actions.
+
 ## Recent Fixes (2026-07-14)
 
 - **Dual-target quest mobs not attacked**: gray quest mobs were filtered out by `isHonorOrXPTarget`. Fixed by skipping that filter only when auto-pilot is active.
