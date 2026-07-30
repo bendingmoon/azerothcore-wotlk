@@ -77,7 +77,8 @@ void PetitionMgr::LoadPetitions()
 void PetitionMgr::LoadSignatures()
 {
     uint32 oldMSTime = getMSTime();
-    SignatureStore.clear();
+    // 注意：不要在这里 clear SignatureStore。LoadPetitions 已为每张登记表创建了空签名对象，
+    // 在此清空会导致"买过表但还没有任何签名"的登记表在重启后丢失签名对象，签名/交还全部被静默拒绝。
 
     QueryResult result = CharacterDatabase.Query("SELECT petition_id, playerguid, player_account FROM petition_sign");
     if (!result)
