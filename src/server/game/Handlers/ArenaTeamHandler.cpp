@@ -40,10 +40,11 @@ void WorldSession::HandleInspectArenaTeamsOpcode(WorldPacket& recvData)
         return;
     }
 
-    if (!GetPlayer()->IsWithinDistInMap(player, INSPECT_DISTANCE, false))
-    {
-        return;
-    }
+    // [CUSTOM] 放开观察距离限制：允许查看任意在线玩家的竞技场信息（原逻辑要求 INSPECT_DISTANCE 内）
+    // if (!GetPlayer()->IsWithinDistInMap(player, INSPECT_DISTANCE, false))
+    // {
+    //     return;
+    // }
 
     if (GetPlayer()->IsValidAttackTarget(player))
     {

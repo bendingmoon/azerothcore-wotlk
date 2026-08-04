@@ -10858,13 +10858,19 @@ bool Unit::_IsValidAttackTarget(Unit const* target, SpellInfo const* bySpell, Wo
     // additional checks - only PvP case
     if (playerAffectingAttacker && playerAffectingTarget)
     {
-        if (!IsPvP() && bySpell && bySpell->IsAffectingArea() && !bySpell->HasAttribute(SPELL_ATTR5_IGNORE_AREA_EFFECT_PVP_CHECK))
+        // 阵营对战: 敌对阵营(联盟vs部落)的AoE法术不受"攻击者未开PvP"限制
+        if (!IsPvP() && repThisToTarget > REP_HOSTILE && bySpell && bySpell->IsAffectingArea() && !bySpell->HasAttribute(SPELL_ATTR5_IGNORE_AREA_EFFECT_PVP_CHECK))
             return false;
 
         if (target->IsPvP())
             return true;
 
         if (IsFFAPvP() && target->IsFFAPvP())
+            return true;
+
+        // 阵营对战: 敌对阵营(联盟vs部落)直接允许攻击, 不要求PvP标记
+        // 与客户端 WAttrComponent.CanAttack 步骤11 的阵营豁免保持一致
+        if (repThisToTarget <= REP_HOSTILE)
             return true;
 
         return HasByteFlag(UNIT_FIELD_BYTES_2, 1, UNIT_BYTE2_FLAG_UNK1) || target->HasByteFlag(UNIT_FIELD_BYTES_2, 1, UNIT_BYTE2_FLAG_UNK1);

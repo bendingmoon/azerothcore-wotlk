@@ -903,6 +903,7 @@ public:                                                 // opcodes handlers
     void HandleMobileItemUpgradeQueryOpcode(WorldPacket& recvData);
     void HandleMobileItemBreakthroughOpcode(WorldPacket& recvData);
     void HandleMobileItemUpgradePurchaseOpcode(WorldPacket& recvData);
+    void HandleMobileItemUpgradePurgeOpcode(WorldPacket& recvData);
     void HandleSellItemOpcode(WorldPackets::Item::SellItem& packet);
     void HandleBuyItemInSlotOpcode(WorldPackets::Item::BuyItemInSlot& packet);
     void HandleBuyItemOpcode(WorldPackets::Item::BuyItem& packet);
@@ -910,6 +911,7 @@ public:                                                 // opcodes handlers
     void HandleAutoStoreBagItemOpcode(WorldPackets::Item::AutoStoreBagItem& packet);
     void HandleReadItem(WorldPackets::Item::ReadItem& packet);
     void HandleBoostItem(WorldPacket& recvPacket);
+    void HandleBoostItemTransfer(WorldPacket& recvPacket);
     void HandleAutoEquipItemSlotOpcode(WorldPackets::Item::AutoEquipItemSlot& packet);
     void HandleSwapItem(WorldPackets::Item::SwapItem& packet);
     void HandleBuybackItem(WorldPackets::Item::BuybackItem& packet);

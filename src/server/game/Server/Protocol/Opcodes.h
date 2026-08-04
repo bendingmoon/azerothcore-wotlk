@@ -1363,7 +1363,11 @@ enum Opcodes : uint16
     CMSG_MOBILE_AFK_GRIND_START                                   = 0x535,
     SMSG_MOBILE_AFK_GRIND_START_RESPONSE                          = 0x536,
     SMSG_MOBILE_AFK_GRIND_STOP                                    = 0x537,
-    NUM_MSG_TYPES                                                 = 0x538
+    CMSG_BOOST_ITEM_TRANSFER                                      = 0x538,
+    SMSG_BOOST_ITEM_TRANSFER                                      = 0x539,
+    CMSG_MOBILE_ITEM_UPGRADE_PURGE                                = 0x53A,
+    SMSG_MOBILE_ITEM_UPGRADE_PURGE_RESPONSE                       = 0x53B,
+    NUM_MSG_TYPES                                                 = 0x53C
 };
 
 enum OpcodeMisc : uint16

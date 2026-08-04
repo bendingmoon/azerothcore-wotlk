@@ -1464,6 +1464,10 @@ void OpcodeTable::Initialize()
     /*0x535*/ DEFINE_HANDLER(CMSG_MOBILE_AFK_GRIND_START,                                          STATUS_LOGGEDIN,   PROCESS_INPLACE,        &WorldSession::HandleMobileAfkGrindStartOpcode          );
     /*0x536*/ DEFINE_SERVER_OPCODE_HANDLER(SMSG_MOBILE_AFK_GRIND_START_RESPONSE,                   STATUS_NEVER);
     /*0x537*/ DEFINE_SERVER_OPCODE_HANDLER(SMSG_MOBILE_AFK_GRIND_STOP,                             STATUS_NEVER);
+    /*0x538*/ DEFINE_HANDLER(CMSG_BOOST_ITEM_TRANSFER,                                             STATUS_LOGGEDIN,   PROCESS_INPLACE,        &WorldSession::HandleBoostItemTransfer                  );
+    /*0x539*/ DEFINE_SERVER_OPCODE_HANDLER(SMSG_BOOST_ITEM_TRANSFER,                               STATUS_NEVER);
+    /*0x53A*/ DEFINE_HANDLER(CMSG_MOBILE_ITEM_UPGRADE_PURGE,                                       STATUS_LOGGEDIN,   PROCESS_INPLACE,        &WorldSession::HandleMobileItemUpgradePurgeOpcode       );
+    /*0x53B*/ DEFINE_SERVER_OPCODE_HANDLER(SMSG_MOBILE_ITEM_UPGRADE_PURGE_RESPONSE,                STATUS_NEVER);
 
 #undef DEFINE_HANDLER
 #undef DEFINE_SERVER_OPCODE_HANDLER

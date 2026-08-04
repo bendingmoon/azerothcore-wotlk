@@ -16,6 +16,7 @@
  */
 
 #include "Common.h"
+#include "DBCStores.h"
 #include "Item.h"
 #include "Log.h"
 #include "ObjectAccessor.h"
@@ -1221,6 +1222,48 @@ void WorldSession::HandleMobileItemUpgradePurchaseOpcode(WorldPacket& recvData)
     SendPacket(&data);
 }
 
+// 移动端请求装备升级重置：退还全部已成功消耗（含突破消耗，失败消耗不退），升级/突破/词条清零
+void WorldSession::HandleMobileItemUpgradePurgeOpcode(WorldPacket& recvData)
+{
+    ObjectGuid itemGuid;
+    recvData >> itemGuid;
+
+    Item* item = _player->GetItemByGuid(itemGuid);
+    if (!item)
+    {
+        WorldPacket data(SMSG_MOBILE_ITEM_UPGRADE_PURGE_RESPONSE, 16);
+        data << itemGuid;
+        data << uint8(0);       // success = false
+        data << uint8(1);       // error: item not found
+        data << uint8(0);       // refund count
+        SendPacket(&data);
+        return;
+    }
+
+    ItemUpgrade::StatRequirementContainer refunded;
+    ItemUpgrade::UpgradeResult result = sItemUpgrade->PurgeAllUpgradesWithRefund(_player, item, refunded);
+
+    WorldPacket data(SMSG_MOBILE_ITEM_UPGRADE_PURGE_RESPONSE, 64);
+    data << itemGuid;
+    data << uint8(result == ItemUpgrade::UPGRADE_OK ? 1 : 0);
+    data << uint8(result);
+    if (result == ItemUpgrade::UPGRADE_OK)
+    {
+        data << uint8(refunded.size());
+        for (const ItemUpgrade::UpgradeStatReq& req : refunded)
+        {
+            data << uint8(req.reqType);
+            data << uint32(req.reqVal1);
+            data << uint32(req.reqVal2);
+        }
+    }
+    else
+    {
+        data << uint8(0);       // refund count
+    }
+    SendPacket(&data);
+}
+
 void WorldSession::HandleReadItem(WorldPackets::Item::ReadItem& packet)
 {
     //LOG_DEBUG("network.opcode", "WORLD: CMSG_READ_ITEM");
@@ -1276,6 +1319,29 @@ void WorldSession::HandleBoostItem(WorldPacket& recvData)
     }
     else
         _player->SendEquipError(EQUIP_ERR_ITEM_NOT_FOUND, nullptr, nullptr);
+}
+
+// 洗炼转移：将源装备的洗炼属性（含洗练次数）转移到同部位目标装备，固定消耗1000金
+void WorldSession::HandleBoostItemTransfer(WorldPacket& recvData)
+{
+    uint8 srcBag, srcSlot, dstBag, dstSlot;
+    recvData >> srcBag >> srcSlot >> dstBag >> dstSlot;
+
+    LOG_DEBUG("network", "CMSG_BOOST_ITEM_TRANSFER: srcBag = {}, srcSlot = {}, dstBag = {}, dstSlot = {}", srcBag, srcSlot, dstBag, dstSlot);
+
+    Item* srcItem = _player->GetItemByPos(srcBag, srcSlot);
+    Item* dstItem = _player->GetItemByPos(dstBag, dstSlot);
+
+    uint8 result = 0;   // 道具不存在
+    if (srcItem && dstItem)
+        result = StatBoostMgr::TransferBoost(_player, srcItem, dstItem);
+
+    WorldPacket data;
+    data.Initialize(SMSG_BOOST_ITEM_TRANSFER, 1 + 8 + 8);
+    data << result;
+    data << (srcItem ? srcItem->GetGUID() : ObjectGuid::Empty);
+    data << (dstItem ? dstItem->GetGUID() : ObjectGuid::Empty);
+    SendPacket(&data);
 }
 
 void WorldSession::HandleSellItemOpcode(WorldPackets::Item::SellItem& packet)
@@ -1647,6 +1713,17 @@ void WorldSession::SendListInventory(ObjectGuid vendorGuid, uint32 vendorEntry)
                 data << uint32(itemTemplate->MaxDurability);
                 data << uint32(itemTemplate->BuyCount);
                 data << uint32(item->ExtendedCost);
+
+                // [CUSTOM] 扩展消耗明细随列表下发（官方客户端读本地 ItemExtendedCost.dbc，本客户端无此数据）
+                ItemExtendedCostEntry const* iece = item->ExtendedCost ? sItemExtendedCostStore.LookupEntry(item->ExtendedCost) : nullptr;
+                data << uint32(iece ? iece->reqhonorpoints : 0);
+                data << uint32(iece ? iece->reqarenapoints : 0);
+                data << uint32(iece ? iece->reqarenaslot : 0);
+                data << uint32(iece ? iece->reqpersonalarenarating : 0);
+                for (uint8 i = 0; i < MAX_ITEM_EXTENDED_COST_REQUIREMENTS; ++i)
+                    data << uint32(iece ? iece->reqitem[i] : 0);
+                for (uint8 i = 0; i < MAX_ITEM_EXTENDED_COST_REQUIREMENTS; ++i)
+                    data << uint32(iece ? iece->reqitemcount[i] : 0);
 
                 if (++count >= MAX_VENDOR_ITEMS)
                 {

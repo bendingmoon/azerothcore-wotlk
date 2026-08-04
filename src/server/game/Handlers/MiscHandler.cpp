@@ -1028,10 +1028,11 @@ void WorldSession::HandleInspectHonorStatsOpcode(WorldPacket& recv_data)
         return;
     }
 
-    if (!GetPlayer()->IsWithinDistInMap(player, INSPECT_DISTANCE, false))
-    {
-        return;
-    }
+    // [CUSTOM] 放开观察距离限制：允许查看任意在线玩家的荣誉统计（原逻辑要求 INSPECT_DISTANCE 内）
+    // if (!GetPlayer()->IsWithinDistInMap(player, INSPECT_DISTANCE, false))
+    // {
+    //     return;
+    // }
 
     if (GetPlayer()->IsValidAttackTarget(player))
     {
