@@ -360,6 +360,70 @@ u32 reqItemId[5], u32 reqItemCount[5]
 
 **未实测清单**：①点竞技场商人（加基森 Vixton/52区 Kezzik 等）→ 列表打开、`GetVendorCostInfo()` JSON 字段正确（重点：牌子 marks、S4 的 rating）②荣誉/点数不足时购买被服务端拦截且提示正确 ③等级不足（如 S4 武器 2050）拦截提示 ④购买成功扣点、得物品、库存/货币刷新 ⑤回归：普通金币商人（Price 正常、JSON 为空表）、出售、修理。
 
+**错误提示中文化修复（2026-08-04）**：购买失败提示英文的根因——`WNetClient.OnUseItemResponse` 先查 `GetWoWGlobalStringByTag`（DBC 英文文案），中文表只作兜底。已改为**优先本地中文表 `InventoryResultExtensions.GetDescription`**（`WErrorCode.cs`，GBK 编码文件，覆盖 ~90 个 EQUIP_ERR 码），无中文映射的码才回退 DBC 英文。购买相关实际文案：69=荣誉点数不足、70=竞技场点数不足、68=缺少上交物品、63=军衔不足，无法装备（购买等级校验复用此码；如需更贴切的"需要个人竞技场等级"由 UI 阶段的前端预检 `CanAffordVendorCost` 给出）。⚠️ `WErrorCode.cs` 是 GBK 编码，不要用 UTF-8 工具编辑（会乱码）。
+
+## 赎回（Buyback）C# 层（2026-08-04，Lua 逻辑未做）
+
+**背景**：官方 12 格回购槽——卖出即入、FIFO 顶出、回购价=卖出价。服务端零改动（`HandleBuybackItem` ItemHandler.cpp:1517 完整；卖出入槽/价格字段自动下发）。用户已做带"赎回"按钮的新预制体（UI/Lua 下次接）。
+
+**协议/数据现状**：
+
+- 回购数据走玩家自身字段：`PLAYER_FIELD_VENDORBUYBACK_SLOT_1`（12×LONG guid）、`PLAYER_FIELD_BUYBACK_PRICE_1`（12×int）、`PLAYER_FIELD_BUYBACK_TIMESTAMP_1`（12×int）。
+- `CMSG_BUYBACK_ITEM`=656：u64 商人 guid + **u32 slot = 74+槽序号**（服务端 `BUYBACK_SLOT_START=74`，Player.h:710）。
+- 失败：钱不够 → SMSG_BUY_FAILED（已有）；背包满 → EQUIP_ERR（已中文化）。成功无专门回包，靠 update object（钱/物品/回购槽字段）刷新。
+- ⚠️ 既有缺口（未修）：`SMSG_SELL_ITEM`（卖出失败回包）客户端未注册 handler，卖不掉的物品静默失败。
+
+**本次 C# 改动**：
+
+- `WEntity.cs` `UpdateAttrEquipContainer`（:1863 附近）：回购槽 3 组字段任一变化即整组重读 12 格 → `WContainerMgr.SetBuybackSlot`。
+- 新文件 `WInfo/WContainerMgr.Buyback.cs`（.meta 由 Unity 生成）：常量 `BUYBACK_SLOT_COUNT=12`/`BUYBACK_SLOT_START=74`；`SetBuybackSlot(index, guid, price, timestamp)`；**`GetBuybackList()`** 返回 JSON `[{index, guid(string), itemId, count, price, timestamp}]`（仅非空槽；itemId/count 经 `WEntityMgr.GetEntity(guid).AttrItem` 取，实体缺失时 itemId=0）。
+- `WNPCHandlerRequest.cs`：新包 `WNpcBuybackItem(npcGuid, slot)`（u64+u32）。
+- `WNetClient.cs`：`BuybackItemFromNpc(guid, slot)`。
+- `WNPCMgr.cs`：**`RequestBuybackItem(index)`**（0-11 → slot 74+index，guid 用 `_currentGossip`）。
+- wrap：`MoonClient_WContainerMgrWrap` 注册 `GetBuybackList`；`MoonClient_WNPCMgrWrap` 注册 `RequestBuybackItem`；两个 EmmyLua 桩已同步。
+
+**Lua 侧待做（下次）**：预制体 Panel/Ctrl 接线——`CJson.decode(WContainerMgr:GetBuybackList())` 渲染 12 格（图标/名称走现有物品表，价格 FormatCurrency）；点赎回 → `WNPCMgr:RequestBuybackItem(index)`；刷新时机：面板 OnActive 拉取 + 卖出/赎回后重拉（无主动事件，需轮询或打开即拉）。
+
+**未实测**：①卖一件物品→回购列表 JSON 有记录（itemId/count/price 正确）②赎回→扣钱物品回背包、槽位清空 ③钱不够/背包满的提示 ④卖出 13 件→最早一件被顶出列表 ⑤重登后回购列表仍在且实体可解析（itemId 不为 0）。
+
+### 赎回 Lua 集成（2026-08-04 第二轮，WowMerchant 面板，未实测）
+
+**背景**：用户新做 `WowMerchant` 预制体取代旧 Shop 面板（`ShopMgr.OpenShopBuy` 已改开 `CtrlNames.WowMerchant`，UIConst:548 已注册，分组 WowMerchantGroup=Bag+WowMerchant+Currency）。购买页商品列表/扩展消耗渲染用户已写好（`WowMerchantItemTemplate._renderCost` 消费 reqHonor/reqArena/reqRating/marks + `CanAffordVendorCost` 同款预检配色）。
+
+**本次改动**：
+
+- C# `WEntity.UpdateAttrEquipContainer` 回购槽解析块末尾：`CallFunc("ModuleMgr.ShopMgr.OnBuybackChanged")`（卖出/赎回/重登字段变化即推）。
+- Lua `ShopMgr`：`OnBuybackChanged` + 事件 `BuybackChanged`（转发用）。
+- `WowMerchantCtrl.lua`：
+  - 购回池 `GetDatasMethod` 修正为 `self._buybackItems`（用户骨架误指 `self._items`）；Init 增隐 `BuybackItemPrefab`。
+  - `_switchTab` 改用真实绑定（`ItemsContainer` / `BuybackScrollRect` / `BuybackEmpty`；用户骨架引用了不存在的 `BuybackItem` 绑定，已删）。
+  - `_renderBuyback` 实装：`GetBuybackList()` decode → 行映射（`isBuyback=true, index, itemId, buyCount=count, Price=price, extendedCost=0`，复用模板金币价格/数量路径）→ 空列表显示 `BuybackEmpty`。
+  - 绑 `BuybackChanged`：购回页重渲染 + 刷货币；`OnActive` 在购回页时也重拉。
+- `WowMerchantItemTemplate.lua`：`data.isBuyback` 分支——点击走 `BuybackItemButton`（购买条目是 `BuyItemButton`）→ `ShowBuybackConfirm`：`CommonUI.Dialog.ShowYesNoDlg` 确认框（"确定要购回「X」吗？价格：Y"）→ 确认才 `WNPCMgr:RequestBuybackItem(data.index)`；itemId=0 时隐藏图标防 ItemTemplate 报错。
+
+**注意**：`WowMerchantItemTemplate` 一个类服务两个模板池（购买/购回），靠 `data.isBuyback` 与 `Parameter.BuyItemButton/BuybackItemButton` 判空分支。
+
+**页签选中态（2026-08-04，终版）**：用户已在 prefab 给每个页签加 `ActiveCap`/`InActiveCap` 两个子节点，`_updateTabVisual`→`_setTabActive` 按状态互斥 `SetActiveEx` 显隐（`Transform:Find` 取节点，Text 不动；`_switchTab` 每次切换都会修正显隐，prefab 初始状态无所谓）。（曾用的颜色压暗方案已废弃；曾查证：`SetSprite` 需图集、`SetSpriteFullPath` 限 `BakedWoW/` 整图替换，切片纹理都换不了。）
+
+**崩溃+图标缺失根因（2026-08-04 已修）**：用户骨架 `_renderCost` 金币路径 `fillCost(nil, FormatCurrency(Price), canAfford, color)` 参数错位（签名是 `(text, canAfford, textColor)`）→ 价格文本显示 "nil"、`LabColor` 被赋布尔值抛异常——发生在图标加载前，导致购买列表图标全不显示 + LoopScroll 格子回调 NRE（`LuaFunction.PCall` 栈）。PvP 扩展消耗路径 3 参数调用本就正确（所以竞技场商人一度正常）。修复：改为 `fillCost(FormatCurrency(Price), canAfford, color)`。另：`OnSetData` 包了 `xpcall` 诊断（出错打 `WowMerchantItemTemplate.OnSetData 出错:` + 堆栈，不再崩面板；确认稳定后可还愿为直接调用）。
+
+### WowMerchant 背包出售按钮（2026-08-04，未实测）
+
+**背景**：老 Shop 面板的出售链路 = `btn_sale` → `ShopMgr.IsBuy=false` + 背包 `OpenModel.Sale` → 点背包物品 → `OnBagItem` 出售分支 → tips 带出售按钮 + 出售列表。WowMerchant 流程 IsBuy 恒 true，`FillShopItem` 对"购买模式+背包物品"直接隐藏按钮区 → 详情页无任何出售操作。老的出售列表 UI（SellPanel）是 RO 商店共用，**未动**。
+
+**方案**（官方语义：开着商人即可卖货，整堆出售，不进出售列表）：
+
+- `ShopMgr.OnBagItem` IsBuy 分支：`UIMgr:IsActiveUI(CtrlNames.WowMerchant)` 且 `IsBagItemCanSell`（= 客户端 `CanSale`，WoW 端为 SellPrice>0）→ tips 带 `TO_SHOP` + `{isBag=true, count=Count, wowSell=true}` 标记。
+- `CommonItemTipsCtrl.CreateShopBtn` IsBuy 分支：`buyTable==nil`（背包物品）且 `wowSell` → 挂【出售】+【取消】；出售 → `ShopMgr.SellItemToWowMerchant(baseData)`。
+- `ShopMgr.SellItemToWowMerchant`：`ShowYesNoDlg` 确认框（名称×数量+单价 `FormatCurrency(SellPrice)`）→ 确认后 `WNPCMgr:RequstSellItem(uid, count)` 整堆出售。
+- `FillShopItem`：`isBag && IsBuy && wowSell` 时**不再隐藏** btnPanel（否则按钮不显示），且不建数量选择模板。
+- 售出后：钱/物品走 update object 刷新；回购槽入槽 → `BuybackChanged` 事件 → WowMerchant 购回页+货币自动刷新（链路已通）。
+- ⚠️ `SMSG_SELL_ITEM`（卖出失败回包）客户端仍无 handler，卖不掉的物品服务端拒绝时无提示（既有缺口）。
+
+**未实测**：①开 WowMerchant 点背包可售物品→tips 出出售按钮→确认→得钱、物品消失 ②确认框取消不出售 ③不可出售物品（SellPrice=0）无按钮 ④出售后购回页出现该物品 ⑤回归：RO 商店出售列表（btn_sale 老链路）、WowMerchant 购买、交易（Trade 也复用 TO_SHOP 分支，`l_openModel==Trade` 判定在 else 分支，不受影响）。
+
+**未实测**：①切购回页签显示 12 槽列表/空态 BuybackEmpty ②点购回→确认框→确认→扣钱得物、列表刷新 ③取消不提交 ④卖出后购回页即时出现新条目（BuybackChanged 驱动）⑤回归：购买页签列表/购买/修理/货币显示。
+
 ## 注意事项 / 坑
 
 - 客户端有 RO 原栈（`M` 前缀 + protobuf）和 WoW 栈（`W` 前缀）两套，已有 "Arena/Pvp" 命名模块全是 RO 玩法，**不要复用也不要改 RO 栈**。
