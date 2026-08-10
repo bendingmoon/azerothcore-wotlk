@@ -825,8 +825,15 @@ void InstanceSaveMgr::CopyBinds(ObjectGuid from, ObjectGuid to, Player* toPlr)
     {
         BoundInstancesMap const& bi = PlayerGetBoundInstances(from, Difficulty(d));
         for (BoundInstancesMap::const_iterator itr = bi.begin(); itr != bi.end(); ++itr)
-            if (!PlayerGetBoundInstance(to, itr->first, Difficulty(d)))
-                PlayerBindToInstance(to, itr->second.save, false, toPlr);
+        {
+            InstanceSave* save = itr->second.save;
+            // Must check the exact slot PlayerBindToInstance writes to;
+            // PlayerGetBoundInstance downscales difficulty and can miss a bind
+            BoundInstancesMap const& toBinds =
+                PlayerGetBoundInstances(to, save->GetDifficulty());
+            if (toBinds.find(save->GetMapId()) == toBinds.end())
+                PlayerBindToInstance(to, save, false, toPlr);
+        }
     }
 }
 

@@ -790,7 +790,18 @@ void WorldSession::HandleTurnInPetitionOpcode(WorldPacket& recvData)
             for (SignatureMap::const_iterator itr = signatureCopy.begin(); itr != signatureCopy.end(); ++itr)
             {
                 LOG_DEBUG("network", "PetitionsHandler: Adding arena team (guid: {}) member {}", arenaTeam->GetId(), itr->first.ToString());
-                arenaTeam->AddMember(itr->first);
+                if (!arenaTeam->AddMember(itr->first))
+                    continue;
+
+                // [CUSTOM] Notify the whole team (captain included) that this signer joined with the new team
+                std::string memberName;
+                if (Player* member = ObjectAccessor::FindConnectedPlayer(itr->first))
+                    memberName = member->GetName();
+                else if (CharacterCacheEntry const* memberData = sCharacterCache->GetCharacterCacheByGuid(itr->first))
+                    memberName = memberData->Name;
+
+                if (!memberName.empty())
+                    arenaTeam->BroadcastEvent(ERR_ARENA_TEAM_JOIN_SS, itr->first, 2, memberName, name, "");
             }
     }
 

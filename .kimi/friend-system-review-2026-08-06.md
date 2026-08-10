@@ -54,20 +54,38 @@
 ### 注解 stub
 - `UnityLuaAPI/MoonClient_WSocialMgr.lua` 补 `AddFriendByName` / `GetIgnoreInfos`
 
-## 三、遗留/注意事项
+## 通用规则（用户指示，2026-08-06）
 
-### 2026-08-06 补充：陌生人私聊不显示修复
-问题：陌生人发私聊，聊天页签联系人列表里查不到就把数据丢了，消息看不到。
-- C# `WSocialMgr.MakeTempContact`：名字缓存未命中时，先用 `ChatMessage` 自带的 SenderName/Class/Level/Icon 顶上，名字仍空则主动 `QueryPlayerName`（回来后 `OnPlayerCheckBack` 自动回填并刷新 Lua）
-- Lua `WowFriendsCtrl._refreshContacts`：未读 sender 在 ContactsDatas 查不到时，用消息自带信息构造临时条目（ContactFlags=0x8）显示出来，不再丢弃
+**旧 RO 逻辑（旧项目）一律直接删除**：RO/Moon protobuf 栈（`Network.Define.Rpc/Ptc.*`、`Rpc.ChatSenderInfo`、`Rpc.AddFriend`、`Rpc.DeleteFriend`、`Ptc.SendPrivateChatMsg`、`ReqChangeChatForbid` 等）后端已不存在，改功能时遇到直接删掉，走 WoW（W）栈实现。已记录到客户端 `D:\Unity\clientproj\AGENTS.md` 第 12 节。
 
-## 三、遗留/注意事项（原内容）
+## 三、后续修复记录（2026-08-06 第二轮）
 
+### 陌生人私聊不显示
+- C# `WSocialMgr.MakeTempContact`：名字缓存未命中时先用 `ChatMessage` 自带的 SenderName/Class/Level/Icon（注意 SenderClass/SenderLevel 是 int 需强转 uint），名字仍空则主动 `QueryPlayerName`
+- Lua `WowFriendsCtrl._refreshContacts`：未读 sender 查不到时用消息自带信息构造临时条目（0x8），不再丢弃
+
+### 自己发的私聊显示成对方说的（WHISPER_INFORM 回显）
+- 根因：服务端回显包 `ChatType=9`（3.3.5a：7=WHISPER，8=WHISPER_FOREIGN，9=WHISPER_INFORM，曾误用8）的 `SenderGUID` 填的是对方 guid
+- 自己发的消息以回显为准统一上屏（发送后不再本地抢先显示）；`OnReceivePrivateChat`/`OnGetRecordChatDatas` 识别 `ChatType==9`（`WowFriendsCtrl` 内有常量 `CHAT_TYPE_WHISPER_INFORM`）归到"我"（whoChat=9）、会话对象取 `ReceiverGUID`；回显不进未读（`FriendMgr.ReceivePrivateChatNtf`）
+- **自己 guid 要用 `WEntityMgr.Player.UID`**（`MPlayerInfo.UID` 会返回 0，不可靠）
+
+### userdata 字段访问坑（tolua 取不存在的字段直接抛异常，不返回 nil）
+- `OnGetRecordChatDatas`：按 `type(data)` 分 userdata(C# ChatMessage)/table(protobuf) 两条路取字段
+- `_selectContact`：sqlite 读出的 C# ChatData 统一转成 Lua table 再进 `_currentChatDatas`（ChatData 没有 Name 字段，模板直接访问崩过）；whoChat 按 chatUid==自己 重新推导，可自愈旧库存错归属的数据
+- 旧版本已写错的 sqlite 历史（回显存成对方）无法自动修复，测试前删掉 `cache/Users/<uid>/Chat/PrivateChat.sqlite`
+
+### 其他
+- `_updateContactSelection`：模板池没有 `GetShowTemplates`/`SetSelected`，改用池的 `Items` 数组；选中高亮交给 `SelectTemplate`，这里只清红点
+- 添加好友不刷新根因：旧 `OnFriendStatus` 新增条目没设 `ContactFlags`（默认 0 被 Lua 过滤）且不调 `OnFriendUpdate`，新版已修，**必须重编热更 C# 程序集才生效**
+- 补充（第二轮日志定位）：**先私聊过的人会变成临时联系人（ContactFlags=0x8），再加为好友时原条目已存在，必须 `ContactFlags |= 0x1` 补好友标志**，否则永远只算联系人、好友列表不显示；`FRIEND_REMOVED` 对称处理（0x8 的只摘 0x1 标志，不整条删）
+- 补充（玩家菜单）：`PlayerMenuLCtrl` 的 FriendBtn 删除分支原来打开旧 Dialog04 没有真删（改为确认框+`WSocialMgr:DelFriend`）；添加改走 `AddFriendByName`；发送消息按钮改开新 WowFriends 面板（`ctrl:OpenChatWith(uid)`），`FriendMgr.AddTemporaryContacts` 的 `menmberInfo` 拼写错误导致函数永远失效已修；`IsFriend/AddIgnore/DelIgnore` 的 self.uid 字符串统一用 `MLuaCommonHelper.ULong` 转换；屏蔽按钮不显是因 `WNetwork_Handler.lua` 登录写死的开放系统列表缺 152(ChatForbid)，已加
+
+## 四、遗留/注意事项
 - 收到私聊会强制切到聊天页签（`WowFriendsCtrl:OnReceivePrivateChat` 末尾），属产品行为，未改
 - 陌生人名字未缓存时不能发私聊（whisper 按名字），会提示"无法找到当前好友"，等 name query 回来即可
+- 对方不在线时发私聊没有回显，消息不上屏（类官方行为）
 - 旧 `FriendsHandler`（Community 面板）仍在用部分老路径，未动
 - 服务端 `character_social` 的 JOIN 会静默丢行（好友被删号等），排查数据问题先看这里
-- C# 改动未跑 Unity 编译验证，热更构建时留意输出
 - **tolua 是生成式 wrap 绑定**：`MoonClient` 类型方法要暴露给 Lua，需在 `Assets/HotUpdate/MoonClient/ThirdParty/MoonClient_<类名>Wrap.cs` 里注册（`_GT` 列表在 `MoonClientExportSettings.cs`，`LuaBinderOfMoonClient.cs` 统一 Register）。新增 C# 方法后要么重新跑生成工具，要么照现有模式手写 RegFunction + 包装方法（string 参数参考 ShowTips，List 返回值参考 GetSocialContactInfos 用 `ToLua.PushSealed`）
 
 ## 四、测试清单

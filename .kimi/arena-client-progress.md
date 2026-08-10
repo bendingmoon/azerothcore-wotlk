@@ -424,6 +424,53 @@ u32 reqItemId[5], u32 reqItemCount[5]
 
 **未实测**：①切购回页签显示 12 槽列表/空态 BuybackEmpty ②点购回→确认框→确认→扣钱得物、列表刷新 ③取消不提交 ④卖出后购回页即时出现新条目（BuybackChanged 驱动）⑤回归：购买页签列表/购买/修理/货币显示。
 
+## 签名流程系统消息 + 建队队员通知（2026-08-08，未实测）
+
+**背景**：对照官方客户端，签名环节有三条系统黄字（"你要求 X 的签名"/"X 已经在你的登记表上签名"/"X 拒绝在你的登记表上签名"），前端此前只刷面板无任何消息；且登记表交还建队后其他签名队员收不到任何通知（服务端该路径无广播，邀请入队路径才有 `ERR_ARENA_TEAM_JOIN_SS`）。
+
+**服务端改动（[CUSTOM]，需重编译 worldserver 生效）**：
+
+- `PetitionsHandler.cpp` `HandleTurnInPetitionOpcode` 竞技场分支：每个签名者 `AddMember` 成功后 `arenaTeam->BroadcastEvent(ERR_ARENA_TEAM_JOIN_SS, guid, 2, 名字, 队名, "")`——全队（含队长）收到该成员加入事件；`AddMember` 失败跳过不广播。
+
+**客户端 C# 改动**：
+
+- **顺手修复线上 bug**：`WArenaTeamResponse.cs` 的 `WArenaTeamEvent` 枚举与 `ArenaMgr.lua` 的 `ARENA_EVENT_*` 常量原为 0~5，与服务端线上值（`ArenaTeam.h ArenaTeamEvents`：JOIN=3/LEAVE=4/REMOVE=5/LEADER_IS=6/LEADER_CHANGED=7/DISBANDED=8）**不符**，导致 JOIN/DISBANDED 等事件判断全部失效（竞技场流程未实测过所以未暴露）。已全部改为 3~8。
+- `WGuildHandlerResponse.cs`：新增 `WGuildPetitionDeclineResponse`（MSG_PETITION_DECLINE=450，仅 u64 签名者 guid）。
+- `WGuildHandlerRequest.cs`：新增 `WGuildPetitionDeclineRequest`（MSG_PETITION_DECLINE，u64 petitionGuid + u64 ownerGuid，服务端依次读两个）。
+- `WGuildRegister.cs`：注册 MSG_PETITION_DECLINE → `WGuildMgr.OnPetitionDeclined`。
+- `WGuildMgr.cs`：①`SendOfferPetition` 发包后 `ShowTipsAndSystem("你要求 X 的签名")`（官方行为：发出即提示，拒绝/失败另有错误包）；②`UpdatePetitionMember` 持有人分支提示"X已经在你的登记表上签名。"（签名方仍只关面板）；③新增 `OnPetitionDeclined`（"X拒绝在你的登记表上签名。"）+ `ResolvePlayerName` helper；④新增 `SendPetitionDecline`（仅被邀请方，持有人自己不发）。
+- `WTeamMgr.DeclinePetitionSign()` + 手写 wrap（`DeclinePetitionSign`）+ EmmyLua 桩已同步。
+- `WArenaMgr.OnArenaEvent` JOIN 分支系统消息：本人 → "你已加入竞技场战队「X」"；他人 → "X 加入了你的战队"。**邀请接受链路的老成员现在也有加入提示了**（此前无）。
+
+**Lua 改动**：`GuildSignaturesCtrl.lua`/`ArenaSignaturesCtrl.lua` 的 `BtnNo`（关闭）——被邀请方（`UID != petition.OwnerGuid`）先 `WTeamMgr:DeclinePetitionSign()` 再关面板（官方语义：关面板=拒签）；持有人关闭不发。
+
+**协议备注**：`SMSG_OFFER_PETITION_ERROR` 服务端标记 `STATUS_NEVER` 从不发送，无需处理。
+
+**未实测清单**：①邀请签名三条消息（要求/已签/拒绝）双方显示正确 ②签名面板关闭→对方收到拒绝消息；签名成功→对方收到已签消息+面板刷新 ③交表建队：队长收"X 加入了你的战队"、签名队员收"你已加入竞技场战队「X」"（需重编译服务端）④邀请入队（非建队）链路：老成员也收到 JOIN 消息 ⑤DISBANDED 缓存清理在枚举修正后生效（离队/解散回归）。
+
+## PVP 功能按钮 BtnPvpFunc（仿官方小地图旁眼睛按钮，2026-08-09，未实测）
+
+**需求**：排队(战场/竞技场)或比赛中，Battle HUD 上显示 PVP 眼睛按钮，点开弹出功能菜单（官方截图样式："积分赛 (2v2)" + 离开按钮）。原 `ObjHint/HintBtn` 的离开队列/离开战场逻辑全部迁移过来，**ObjHint 弃用（始终隐藏）**。
+
+**prefab 现状**（用户已在 Unity 建好并完成绑定，`BattlePanel.lua` 注解已含）：`BtnPvpFunc`（根 Button ✓，初始 active=1 由 Lua 控制隐藏；子 `Text`→绑定名 `PvpFuncText`，烤死"PVP"）> `PvpBtnsPanel`（初始 active=0 ✓）> `Title/Name`→绑定名 `PvpBtnsName`（菜单标题，烤死"积分赛(2v2)"占位）、`PvpBtnExit`（Button ✓，Transition None）、`PvpBtnsPanelClose`（Button ✓）。⚠️ **`PvpBtnExit/bg/Name` 文本未绑定**（烤死 donor 文案"离开地下城"）：Lua 按既有先例 `PvpBtnExit.Transform:Find("bg/Name"):GetComponent("Text")` 直改（先例 `BattlefieldQueueCtrl.lua:218`），无需 Unity 补绑定。
+
+**BattleCtrl.lua 改动**：
+
+- ObjHint：`OnInitPanel` 保持 false + 解绑 HintBtn 点击；`OnPanelChange`/`OnBattleQueueChange` 里的 ObjHint 显隐赋值已删。`Init()` 的 `NewRedSign(HintBtn)` 保留（在隐藏节点内无害）。`_onHintClick` 已删除，逻辑迁入 `_onPvpFuncExitClick`。
+- 状态机 `_pvpFuncState`：`nil` 不显示 / `"queue"` 排队中(含 WAIT_JOIN 弹场待确认) / `"battle"` 比赛中；`_pvpFuncInfo={arenaType,isRated}`。由三个事件驱动：`ON_BATTLE_QUEUE`（绑定已扩展接收 `time1,time2,arenaType,isRated`）、`ON_BATTLE_ENTER`（**仅 arenaType 为数值才响应**——RO 栈 `BattleMgr.OnEnterScene`(:339) 也派发此事件但无参数）、`ON_BATTLE_LEAVE`（STATUS_NONE 时 C# 同帧派发，队列移除/离场都走这）。
+- 菜单内容：标题——竞技场 `积分赛/练习赛 (XvX)`（isRated 取排队信息；重连无排队信息时 `ArenaMgr.GetArenaMatch()` 兜底），战场 `阿拉希盆地`（唯一 BG，写死）；离开按钮文案——queue→`离开队列`、battle→`离开竞技场`(arenaType>0)/`离开战场`。
+- 退出动作 `_onPvpFuncExitClick` = 原 HintBtn 全套：`WBattleMgr:BattleConfirm(false)`（WAIT_QUEUE→取消排队 / IN_PROGRESS→WBattleLeaveRequest）+ 乐观隐藏 BattlePanel/WaitPanel + 清状态。
+- 幂等安全性：`AddClick` 默认 `clearListener=true`（MLuaUICom.cs:914），OnInitPanel 被 `ON_BATTLE_ENTER`（竞技场周期状态包）重入时重复绑定无副作用；`_refreshPvpFunc` 不动菜单开合状态，周期重绘不关用户已打开的菜单。
+- 已知未动：`BtnPvpFunc` 初始 prefab active=1，由 `_refreshPvpFunc` 首帧隐藏；PvpArena 战场页 `BtnCancel` 取消排队后 Battle 的 WaitPanel 不隐藏是既有缺口（本按钮路径无此问题）。
+
+**排队加入横幅（同日第二轮，未实测）**：仿官方"你所在的小队加入了所有竞技场的等待队列"系统提示，首次进入排队时用 Battle 的 `Alarm` 节点弹一次。`OnBattleQueueChange(true)` 内以 `_pvpQueueJoined` 标志识别**新排队会话**（竞技场状态包周期重发不重复弹）；`_showPvpQueueAlarm(arenaType)`：文案 = (组队中`你所在的小队`/单人`你`，取 `TeamData.myTeamInfo.isInTeam`) + `加入了` + (arenaType>0→`所有竞技场`/战场→`阿拉希盆地`) + `的等待队列`，`Alarm`+`Tips.LabText`+`PlayFxHelper`+`ForceUpdate` 显示，`NewUITimer` 3s 后收回（**收回前校验 `Tips.LabText` 仍是自己的文案**，避免误关 StartPiPei/开战倒计时对 Alarm 的占用）；标志在 `OnBattleQueueChange(false)`/`_onPvpFuncEnterBattle`/`_onPvpFuncLeave` 重置（重新排队会再弹）；`_pvpQueueAlarmTimer` 已在 `OnUnInitPanel` 清理。
+
+**状态刷新 BUG 根治（2026-08-09 第四轮，实测日志定位）**：症状=离开队列后排队状态不刷新、BtnPvpFunc 一直在、第一次点离开"无效"。日志铁证：`StatusParser: 简单状态包` 后紧跟着 `BattleStatusChange: StatusID=1`（STATUS_NONE 被当成 WAIT_QUEUE 分发）+ Lua 又收一次 OnWaitInQueue。根因=`WPacketsHandler.RegisterHandler` 的 `Reponse = new U()` **实例永久复用**，`Load()` 不清字段；`WBattlefieldStatusResponse.LoadData` 简单包（12 字节 STATUS_NONE）提前 return，**沿用上一个 WAIT_QUEUE 的全部旧值**（StatusID=1/ArenaType=2/Time 等）→ switch 走 `case STATUS_WAIT_QUEUE` 用旧数据调 OnWaitInQueue → 队列 UI 复活，ON_BATTLE_LEAVE 永不派发。修复：`WBattleGroundResponse.cs` `WBattlefieldStatusResponse.LoadData` **开头先清零全部字段**（:75-88）。⚠️ 同类隐患模式："缓存复用实例 + LoadData 提前 return 不重置字段"——其他响应包若有提前 return 分支也需注意。
+
+配套说明：此前各轮辅助修复——C# `BattleConfirm` battleStatus==null 时用 battleStatusDict 兜底组包（AB 去重致 null 不发包的隐患）；STATUS_NONE 分支与 UpdateBattleStatusSlot 的 CallFunc try-catch（EventDispatcher 无 pcall，监听器异常会拖垮主链）；Lua `_pvpQueueJoined` 只在 STATUS_NONE/进场重置；`WBattlefieldMgr.OnQueueStatusChange` 空表防御。诊断日志（`[PvpFunc]` 前缀，C#/Lua 全链）**暂保留**，稳定后可删。
+
+**未实测清单**：①排 AB→按钮出现（标题"阿拉希盆地"/"离开队列"）→点开菜单→离开队列→按钮与 WaitPanel 消失 ②排竞技场练习赛→标题"练习赛 (2v2)"→菜单离开→ArenaQueue 面板不受影响 ③弹场确认进场→按钮变"离开战场/离开竞技场"→点击出场 ④比赛结束自动离场后按钮消失 ⑤断线重连进竞技场→按钮恢复（标题经 GetArenaMatch 兜底）⑥回归：AB 战场内 BattlePanel 资源条、BattlePre 等候区 WaitPanel 倒计时、RO 战场（OnEnterScene 无参事件不弹按钮）⑦首次排队→Alarm 横幅 3s 自动消失，周期状态包不重复弹；取消/进场/离场后再排→横幅再次弹出；单人排队文案无"小队"字样；横幅期间不干扰 BattlePre 匹配/开战倒计时对 Alarm 的使用 ⑧**回归本次修复**：排队中点一次离开即真离开、Alarm 不重弹、按钮消失不残留、菜单点击始终有响应。
+
 ## 注意事项 / 坑
 
 - 客户端有 RO 原栈（`M` 前缀 + protobuf）和 WoW 栈（`W` 前缀）两套，已有 "Arena/Pvp" 命名模块全是 RO 玩法，**不要复用也不要改 RO 栈**。

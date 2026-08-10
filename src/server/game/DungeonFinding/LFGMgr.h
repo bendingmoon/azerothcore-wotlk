@@ -464,6 +464,8 @@ namespace lfg
         LfgDungeonSet const& GetSelectedDungeons(ObjectGuid guid);
         /// Get current lfg state
         LfgState GetState(ObjectGuid guid);
+        /// Get the time the player/group joined the LFG queue, 0 if not queued
+        time_t GetQueueJoinTime(ObjectGuid guid);
         /// Get current dungeon
         uint32 GetDungeon(ObjectGuid guid, bool asId = true);
         /// Get the map id of the current dungeon

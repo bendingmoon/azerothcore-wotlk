@@ -162,6 +162,56 @@ path. Changes (Unity client, `D:\Unity\clientproj`):
 - **Diagnostic logging prefixes**: `[GrindTarget]`, `[needForQuest]`, `[AttackAnything]`.
   - File: `ChooseTargetActions.cpp`
 
+## Cast-Spell-On-Creature Objectives (2026-08-07)
+
+Handles quests credited by casting a spell on a neutral/friendly creature or
+NPC (e.g. q9283 "Rescue the Survivors!" — cast Gift of the Naaru on a Draenei
+Survivor). Neither killing (target unattackable) nor the use-item branch
+(no quest item) can credit these.
+
+- **Credit model note**: this core has no `RequiredSpellCast`; all
+  `RequiredNpcOrGo` objectives are flagged KILL|CAST|SPEAKTO at load and
+  credit arrives via `KilledMonsterCredit` / `KillCreditGO` /
+  `TalkedToCreature`, triggered by KILL_CREDIT spell effects, SmartAI
+  (`SPELLHIT` → `CALL_KILLEDMONSTER`), or hardcoded C++ `SpellHit` scripts.
+- **New branch**: `NewRpgDoQuestAction::CastSpellOnCreatureObjective` in
+  `NewRpgAction.cpp` (called right after `UseQuestItemOnCreatureObjective`).
+  Resolution order, cached per POI stay via `DoQuest.castSpellId`:
+  1. `FindSmartAiCastSpell` — reverse-lookup of the objective creature's
+     SmartAI script (direct `CALL_KILLEDMONSTER` or one link hop); then scans
+     nearby creatures' scripts for credit-bunny objectives (quest counts an
+     invisible trigger entry while the visible mob carries the script).
+  2. `FindKillCreditSpell` — spellbook scan for KILL_CREDIT/KILL_CREDIT2 with
+     `MiscValue == creatureEntry`.
+  3. Weak item fallback — `FindQuestUseItem(..., strongOnly=false)`: the
+     quest's own StartItem whose spell can target a unit. Moved here from
+     `UseQuestItemOnCreatureObjective` (which now takes `strongOnly=true`) so
+     the guess ranks behind the precise rules and can no longer starve them;
+     the item is used through the shared cast path via `FindItemWithSpell`.
+  4. Heal fallback — target friendly (`!IsValidAttackTarget`) and injured
+     (<100% HP): `PickHealSpell` collects known unit-targetable heals
+     (positive, `TARGET_FLAG_UNIT`, range ≥ 5, `SPELL_EFFECT_HEAL` /
+     `SPELL_AURA_PERIODIC_HEAL`) and tries them one by one; a cast that
+     produced no progress within `castCreditWaitTime` (6s) is blacklisted in
+     `DoQuest.failedCastSpells`. Covers C++ family-flag checks like q9283,
+     where only Gift of the Naaru credits but e.g. a priest's Lesser Heal may
+     be tried first.
+- **Cast path**: `botAI->CastSpell` when the spell is known (cooldown checked
+  via `HasSpellCooldown`), otherwise the same `CMSG_USE_ITEM` packet shape as
+  the use-item branch (`FindItemWithSpell`: on-use item carrying the spell).
+- **Anti-spam**: shares `DoQuest.lastUseItemTarget` / `lastUseItemTime` +
+  `useItemRetryTime` with the use-item branch; all cast state is reset at the
+  four POI reset sites in `DoIncompleteQuest`.
+- **Grind guard**: `GrindTargetValue::needForQuest` (auto-pilot branch) skips
+  targets failing `IsValidAttackTarget` — they can never be kill-credited and
+  would otherwise be picked as grind targets forever.
+- **Measured coverage** (base world DB, `var/analyze_smartai_spellhit.py`):
+  118 quests with cast target == objective creature, +50 via credit-bunny;
+  only 1 TIMED_ACTIONLIST-indirect row, 0 any-spell rows.
+- **Not covered yet**: SmartAI chains through TIMED_ACTIONLIST, SPELLHIT with
+  spell id 0, weakened-target variants, item-on-GO objectives, SPEAKTO/gossip
+  objectives.
+
 ## Usage
 
 ```bash

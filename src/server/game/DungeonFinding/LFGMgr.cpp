@@ -2483,6 +2483,14 @@ namespace lfg
         return state;
     }
 
+    time_t LFGMgr::GetQueueJoinTime(ObjectGuid guid)
+    {
+        if (GetState(guid) != LFG_STATE_QUEUED)
+            return 0;
+
+        return GetQueue(guid).GetJoinTime(guid);
+    }
+
     LfgState LFGMgr::GetOldState(ObjectGuid guid)
     {
         LfgState state;
