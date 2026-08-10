@@ -30,11 +30,20 @@ Real players can temporarily hand control to bot AI for automated quest completi
 
 ## Stop Reasons
 
-0. Quest completed / rewarded
-1. Manual movement detected
-2. Player command (`.bot auto stop`)
-3. Quest abandoned / status changed
-4. Other fallback
+Matches `enum class AutoPilotStopReason` (`PlayerbotAI.h:88`); shared by the
+auto-quest and AFK grind stop packets.
+
+0. `QUEST_COMPLETED` — quest completed / rewarded (or objectives complete, manual turn-in)
+1. `MANUAL_MOVEMENT` — manual movement detected
+2. `PLAYER_COMMAND` — player command (`.bot auto stop`)
+3. `INVALID` — invalid/error state (currently unused)
+4. `OTHER` — other fallback (e.g. quest abandoned by AI)
+5. `PLAYER_DIED` — character died while auto-questing / AFK grinding
+
+Death handling: `PlayerbotMgr::UpdateAIInternal` (`PlayerbotMgr.cpp:1588`) checks
+`autoPilotActive && master->isDead()` every AI tick and stops with `PLAYER_DIED`,
+covering both QUEST and GRIND tasks. Post-death AI actions (auto release / corpse
+run / self-res) are separately `IsRealPlayer()`-gated — see `death-state-sync-fix.md`.
 
 ## Key Server Files
 
@@ -211,6 +220,41 @@ Survivor). Neither killing (target unattackable) nor the use-item branch
 - **Not covered yet**: SmartAI chains through TIMED_ACTIONLIST, SPELLHIT with
   spell id 0, weakened-target variants, item-on-GO objectives, SPEAKTO/gossip
   objectives.
+
+## Recent Fixes (2026-08-10)
+
+- **Manual movement sometimes failed to cancel auto-pilot / AFK grind (stuck grinding
+  forever)**: the 500ms detection window in `PlayerbotMgr::HandleMasterIncomingPacket`
+  compared packet time against `PlayerbotAI::lastAIMoveTime`, but that timestamp was
+  refreshed on **every AI tick** (PlayerbotAI.cpp, `reactDelay` default 100ms), so the
+  window never opened. `MANUAL_MOVEMENT` stops only fired when the map thread stalled
+  >500ms (lag, teleport transfer) — hence "sometimes works, sometimes stuck".
+- **Fix**: dropped the time window entirely (member / getter / per-tick update removed)
+  and replaced it with explicit ACK filtering — while server-controlled the client sends
+  no movement opcodes of its own, so any opcode in 0x0B5–0x0F7 except ACKs of
+  server-forced movement is real player input → `StopAutoPilot(MANUAL_MOVEMENT)`.
+  Excluded ACKs: TELEPORT_ACK 0x0C7, WORLDPORT_ACK 0x0DC, FORCE speed/root/unroot ACKs
+  0x0E3/0x0E5/0x0E7/0x0E9/0x0EB, KNOCK_BACK_ACK 0x0F0, HOVER_ACK 0x0F6 — being rooted,
+  knocked back or teleported mid-grind no longer cancels (and no longer blocks cancel).
+- **Known remaining gap**: teleporting to another map while grinding leaves grind active
+  but idle (grind-center map check rejects all targets); first manual movement now
+  cancels it reliably. Auto-stop on map change not implemented (optional improvement).
+
+- **Hosted real player auto-replied "Invite me to your group first"**: any whisper to a
+  real player under auto-pilot / AFK grind was routed into the bot command pipeline by the
+  whisper hook (`Playerbots.cpp`), and `PlayerbotSecurity::CheckLevelFor`
+  (`PlayerbotSecurity.cpp:269`) auto-whispered the deny text to non-masters. The hosted
+  player got no echo of the outgoing whisper, so only the whisperer saw it — looked like
+  the character talked on its own. Only whispers triggered it (other chat types pass
+  `silent=true`); unsecured commands (`who`, `invite`, …) and the `RepeatDelay` throttle
+  made it look intermittent.
+- **Fix**: hard `botAI->IsRealPlayer()` gates in both chat routing hooks in
+  `modules/mod-playerbots/src/Script/Playerbots.cpp`:
+  - Whisper hook (`OnPlayerCanUseChat` with `Player* receiver`): skip `HandleCommand`
+    entirely for real players.
+  - Group hook (`OnPlayerCanUseChat` with `Group*`): same gate — also closes the hole
+    where unsecured commands (`leave`, `invite`, …) bypassed the security check, so a
+    party member typing "leave" in party chat could force the hosted player out.
 
 ## Usage
 

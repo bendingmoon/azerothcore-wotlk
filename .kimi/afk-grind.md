@@ -2,7 +2,7 @@
 
 > Original memory: `afk-grind-feature.md`
 
-Completed 2026-07-14. Adds `AutoPilotTask::GRIND = 3` on top of the existing AutoPilot framework. Character attacks nearby mobs and loots within a radius; auto-cancels on manual movement.
+Completed 2026-07-14. Adds `AutoPilotTask::GRIND = 3` on top of the existing AutoPilot framework. Character attacks nearby mobs and loots within a radius; auto-cancels on manual movement or death (`AutoPilotStopReason::PLAYER_DIED`, shared stop-reason enum — see auto-pilot.md).
 
 ## Design
 
@@ -50,12 +50,20 @@ Completed 2026-07-14. Adds `AutoPilotTask::GRIND = 3` on top of the existing Aut
       continue;
   ```
 
+## Recent Fixes (2026-08-10)
+
+- **Manual movement sometimes failed to cancel grind (stuck grinding forever)**: root
+  cause was in the shared detection in `PlayerbotMgr::HandleMasterIncomingPacket` —
+  `lastAIMoveTime` was refreshed every AI tick so the 500ms window never opened.
+  Replaced with ACK-exclusion filtering; cancel is now deterministic. Details in
+  auto-pilot.md (same-date entry).
+
 ## Usage
 
 ```bash
 .bot auto grind      # start AFK grinding
 .bot auto stop       # stop
-# WASD auto-cancels after ~500ms detection window
+# WASD / joystick input auto-cancels (any movement opcode except server-forced-movement ACKs)
 ```
 
 ```lua
