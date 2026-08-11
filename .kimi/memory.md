@@ -27,6 +27,7 @@ This file is the curated index for Kimi Code CLI. Detailed feature memories live
 | [quest-state-refresh-fix.md](quest-state-refresh-fix.md) | 接任务后 TalkDlg2 选项不刷新/NPC 头顶标识不对：C# 接交任务后重拉 gossip + Lua GotoNpc 改为原地重建选项 + WNpcFxComponent 状态缓存同步（2026-07-26） |
 | [remote-movement-sync.md](remote-movement-sync.md) | 远程玩家移动同步全套修复：航位推测+追赶加速+防倒退+追停朝向；官方端游发送端协议差异（STOP 残留标志/STOP_STRAFE 真停/SET_FACING 无标志/心跳稀疏）；待优化项（2026-07-27） |
 | [spell-fx-lifetime-fix.md](spell-fx-lifetime-fix.md) | 技能/buff/引导特效生命周期整体修复：自毁链收口 OwnerFxId、消退窗口防硬切、IsBullet 去重、死亡清理、引导特效绑定时长、WBuff 用错管理器泄漏（2026-07-27） |
+| [skill-cast-stuck-fix.md](skill-cast-stuck-fix.md) | 卡技能全链修复（纯前端）：群CD豁免无GCD技能、等待队列移动不清+过期、读条看门狗、_autoSkillId 精确吞包、_waitSkillId 自愈、排队高亮即时化 + 双端 CD 对齐 6 项（COOLDOWN_EVENT 反向/rec优先/类别扇出/GO起算/打断撤GCD/急速GCD）；含服务端技能与 CD 模型参考（2026-08-11） |
 | [stance-buff-icon-fix.md](stance-buff-icon-fix.md) | 战士姿态 buff 图标不显示：IsAuraShow 误用 retail 语义 NO_AURA_ICON(0x10000000) 于 WotLK 数据，变形/姿态光环豁免该检查（2026-08-10） |
 | [buff-ghost-icon-fix.md](buff-ghost-icon-fix.md) | 幽灵 buff（别人/过期 buff 挂自己头像下）：UpdateAll 快照改原子差集同步 + 槽位幽灵替换自愈 + AddAuraUpdate 写回 bug（2026-08-10） |
 | [tbc-pvp-prices.md](tbc-pvp-prices.md) | TBC S4 赛季 PvP 价格还原：S3/S4 竞技场点数+等级门槛、荣誉散件荣誉+牌子（itemextendedcost_dbc 10000+ 段，SQL+生成脚本+conf/赛季配套），待办客户端 DBC 补丁与 S2（2026-07-28） |
