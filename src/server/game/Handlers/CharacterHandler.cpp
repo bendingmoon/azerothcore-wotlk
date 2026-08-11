@@ -812,13 +812,11 @@ void WorldSession::HandlePlayerLoginOpcode(WorldPacket& recvData)
                 return;
             }
 
-            sess->SetPlayer(nullptr);
-            SetPlayer(p);
-            p->SetSession(this);
-            delete p->PlayerTalkClass;
-            p->PlayerTalkClass = new PlayerMenu(p->GetSession());
-            HandlePlayerLoginToCharInWorld(p);
-            return;
+            // The custom mobile client always rebuilds its full state on login and expects
+            // the complete login packet sequence; the reconnect-adopt sequence leaves it
+            // half-initialized. Force the lingering character out of the world and fall
+            // through to the full login-from-db sequence below.
+            sess->LogoutPlayer(true);
         }
     }
 

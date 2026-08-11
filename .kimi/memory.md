@@ -23,6 +23,7 @@ This file is the curated index for Kimi Code CLI. Detailed feature memories live
 | [lfg-bot-whisper-teleport-fix.md](lfg-bot-whisper-teleport-fix.md) | 禁止 bot 向真人发悄悄话 + LFG 等待匹配期间禁止随机传送（2026-07-21） |
 | [lfg-requeue-rolecheck-fix.md](lfg-requeue-rolecheck-fix.md) | LFG 踢人补位重排队 WRONG_ROLES：bot 职责检查改用 LFG 已存职责应答 + 前端抑制重复职责框（2026-07-24） |
 | [lfg-bot-follow-stuck-fix.md](lfg-bot-follow-stuck-fix.md) | LFG bot 站着不动不跟随：等待期禁 grind/rpg 防传送瞬间进战斗 + 落单 bot 补发传送兜底 + master 失联 60s 清理 + 进队问候 + 禁止陪打 bot 自退队列（2026-08-11） |
+| [lfg-bot-dungeon-teleport-fallback-fix.md](lfg-bot-dungeon-teleport-fallback-fix.md) | LFG bot 在队满血但不进本：兜底补发仍被 TeleportPlayer 检查卡死（战斗/坠落/疲劳不自愈）→ 两段式（补发→CombatStop+直接 TeleportTo 强拉）+ 传送途中防误清理（2026-08-12） |
 | [lfg-bot-role-spec.md](lfg-bot-role-spec.md) | LFG 陪打 bot 按分配职责生成天赋：Randomize/InitTalentsTree 支持指定专精 + 职责→specno 映射（坦/奶/DPS 各归其位，装备/铭文/策略/职责应答自动传导）（2026-08-11） |
 | [lfg-leader-transfer-rules.md](lfg-leader-transfer-rules.md) | LFG 队伍队长规则：新钩子 OnPlayerbotCanChangeGroupLeader 禁止传队长给 bot（只拦手动）；OnChangeLeader 里 LFG 组传给真人时所有 bot 的 master 切新队长（2026-08-11） |
 | [death-state-sync-fix.md](death-state-sync-fix.md) | 死亡卡死/无灵魂状态/血条残留：前端死亡判断改 GHOST 标志驱动（活人 HP=1 不误判）+ Attr.IsDead 直接置位 + 事件兜底重发；playerbots 死后自动行为跳过真人（2026-07-25） |
@@ -32,7 +33,8 @@ This file is the curated index for Kimi Code CLI. Detailed feature memories live
 | [spell-fx-lifetime-fix.md](spell-fx-lifetime-fix.md) | 技能/buff/引导特效生命周期整体修复：自毁链收口 OwnerFxId、消退窗口防硬切、IsBullet 去重、死亡清理、引导特效绑定时长、WBuff 用错管理器泄漏（2026-07-27） |
 | [skill-cast-stuck-fix.md](skill-cast-stuck-fix.md) | 卡技能全链修复（纯前端）：群CD豁免无GCD技能、等待队列移动不清+过期、读条看门狗、_autoSkillId 精确吞包、_waitSkillId 自愈、排队高亮即时化 + 双端 CD 对齐 6 项（COOLDOWN_EVENT 反向/rec优先/类别扇出/GO起算/打断撤GCD/急速GCD）；含服务端技能与 CD 模型参考（2026-08-11） |
 | [stance-buff-icon-fix.md](stance-buff-icon-fix.md) | 战士姿态 buff 图标不显示：IsAuraShow 误用 retail 语义 NO_AURA_ICON(0x10000000) 于 WotLK 数据，变形/姿态光环豁免该检查（2026-08-10） |
-| [buff-ghost-icon-fix.md](buff-ghost-icon-fix.md) | 幽灵 buff（别人/过期 buff 挂自己头像下）：UpdateAll 快照改原子差集同步 + 槽位幽灵替换自愈 + AddAuraUpdate 写回 bug（2026-08-10） |
+| [buff-ghost-icon-fix.md](buff-ghost-icon-fix.md) | buff 图标串单位/复活/重复：根源是网络层响应对象单例复用 + WAuraUpdateAllResponse.Auras 跨包累积（Auras.Clear）；配套快照差集/注册即回放/单条排队回放/时长刷新/白名单（2026-08-10） |
+| [relogin-no-ui-fix.md](relogin-no-ui-fix.md) | 重登/杀进程重登后主 UI 全不显示：直接根因 SceneEnterMgr ExtraUi 静态表原地改写致二次进场景 gmatch 崩溃、面板列表为空；服务端接管路径改"先踢后登"统一完整登录序列；客户端登出流程补全（76 处理器/正式清理/关双连接/免弹窗）+ 场景兜底（firstInScene 15s 超时/SwitchMap 判空重试）（2026-08-11） |
 | [tbc-pvp-prices.md](tbc-pvp-prices.md) | TBC S4 赛季 PvP 价格还原：S3/S4 竞技场点数+等级门槛、荣誉散件荣誉+牌子（itemextendedcost_dbc 10000+ 段，SQL+生成脚本+conf/赛季配套），待办客户端 DBC 补丁与 S2（2026-07-28） |
 | [other-memories.md](other-memories.md) | Index of original Claude Code memories |
 
