@@ -116,6 +116,7 @@ public:
     bool IsDatabaseBound() const { return false; }
 
     [[nodiscard]] virtual bool OnPlayerbotCheckLFGQueue(lfg::Lfg5Guids const& /*guidsList*/) { return true; }
+    [[nodiscard]] virtual bool OnPlayerbotCanChangeGroupLeader(Group* /*group*/, Player* /*newLeader*/) { return true; }
     virtual void OnPlayerbotCheckKillTask(Player* /*player*/, Unit* /*victim*/) { }
     virtual void OnPlayerbotCheckPetitionAccount(Player* /*player*/, bool& /*found*/) { }
     [[nodiscard]] virtual bool OnPlayerbotCheckUpdatesToSend(Player* /*player*/) { return true; }
@@ -746,6 +747,7 @@ public: /* LootScript */
 public: /* PlayerbotScript */
     
     bool OnPlayerbotCheckLFGQueue(lfg::Lfg5Guids const& guidsList);
+    bool OnPlayerbotCanChangeGroupLeader(Group* group, Player* newLeader);
     void OnPlayerbotCheckKillTask(Player* player, Unit* victim);
     void OnPlayerbotCheckPetitionAccount(Player* player, bool& found);
     bool OnPlayerbotCheckUpdatesToSend(Player* player);

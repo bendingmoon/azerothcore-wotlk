@@ -33,6 +33,21 @@ bool ScriptMgr::OnPlayerbotCheckLFGQueue(lfg::Lfg5Guids const& guidsList)
     return true;
 }
 
+bool ScriptMgr::OnPlayerbotCanChangeGroupLeader(Group* group, Player* newLeader)
+{
+    auto ret = IsValidBoolScript<PlayerbotScript>([&](PlayerbotScript* script)
+    {
+        return !script->OnPlayerbotCanChangeGroupLeader(group, newLeader);
+    });
+
+    if (ret && *ret)
+    {
+        return false;
+    }
+
+    return true;
+}
+
 void ScriptMgr::OnPlayerbotCheckKillTask(Player* player, Unit* victim)
 {
     ExecuteScript<PlayerbotScript>([&](PlayerbotScript* script)

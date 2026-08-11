@@ -427,6 +427,11 @@ void WorldSession::HandleGroupSetLeaderOpcode(WorldPacket& recvData)
     if (!group->IsLeader(GetPlayer()->GetGUID()) || player->GetGroup() != group || guid == GetPlayer()->GetGUID())
         return;
 
+    // Modules can veto the leader change (e.g. LFG companion bots must never
+    // become party leader).
+    if (!sScriptMgr->OnPlayerbotCanChangeGroupLeader(group, player))
+        return;
+
     // Everything's fine, accepted.
     group->ChangeLeader(guid);
     group->SendUpdate();

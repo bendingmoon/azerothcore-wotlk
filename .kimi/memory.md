@@ -22,6 +22,9 @@ This file is the curated index for Kimi Code CLI. Detailed feature memories live
 | [lfg-proposal-veto-fix.md](lfg-proposal-veto-fix.md) | LFG 匹配被 OnPlayerbotCheckLFGQueue 否决（真人带 botAI 误判）+ 替补 bot 等级死循环修复（2026-07-20） |
 | [lfg-bot-whisper-teleport-fix.md](lfg-bot-whisper-teleport-fix.md) | 禁止 bot 向真人发悄悄话 + LFG 等待匹配期间禁止随机传送（2026-07-21） |
 | [lfg-requeue-rolecheck-fix.md](lfg-requeue-rolecheck-fix.md) | LFG 踢人补位重排队 WRONG_ROLES：bot 职责检查改用 LFG 已存职责应答 + 前端抑制重复职责框（2026-07-24） |
+| [lfg-bot-follow-stuck-fix.md](lfg-bot-follow-stuck-fix.md) | LFG bot 站着不动不跟随：等待期禁 grind/rpg 防传送瞬间进战斗 + 落单 bot 补发传送兜底 + master 失联 60s 清理 + 进队问候 + 禁止陪打 bot 自退队列（2026-08-11） |
+| [lfg-bot-role-spec.md](lfg-bot-role-spec.md) | LFG 陪打 bot 按分配职责生成天赋：Randomize/InitTalentsTree 支持指定专精 + 职责→specno 映射（坦/奶/DPS 各归其位，装备/铭文/策略/职责应答自动传导）（2026-08-11） |
+| [lfg-leader-transfer-rules.md](lfg-leader-transfer-rules.md) | LFG 队伍队长规则：新钩子 OnPlayerbotCanChangeGroupLeader 禁止传队长给 bot（只拦手动）；OnChangeLeader 里 LFG 组传给真人时所有 bot 的 master 切新队长（2026-08-11） |
 | [death-state-sync-fix.md](death-state-sync-fix.md) | 死亡卡死/无灵魂状态/血条残留：前端死亡判断改 GHOST 标志驱动（活人 HP=1 不误判）+ Attr.IsDead 直接置位 + 事件兜底重发；playerbots 死后自动行为跳过真人（2026-07-25） |
 | [death-release-stuck-fix.md](death-release-stuck-fix.md) | 死亡卡死防御性修复：IsDead setter 标志/清血条提前+全防护、UpdateAttrValue/EquipVisible 补 try-catch、GetUpdateValues 空 catch 加日志、Update() 每秒补弹释放框；Repop/SelfResurrect 加真人守卫（2026-07-29） |
 | [quest-state-refresh-fix.md](quest-state-refresh-fix.md) | 接任务后 TalkDlg2 选项不刷新/NPC 头顶标识不对：C# 接交任务后重拉 gossip + Lua GotoNpc 改为原地重建选项 + WNpcFxComponent 状态缓存同步（2026-07-26） |

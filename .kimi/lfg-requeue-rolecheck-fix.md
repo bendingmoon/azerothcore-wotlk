@@ -40,10 +40,10 @@
   成功权威信号 = SMSG_LFG_UPDATE_PARTY / LFG_UPDATETYPE_ADDED_TO_QUEUE（LFGMgr.cpp:1558）；
   队列中持续状态走周期性 SMSG_LFG_QUEUE_STATUS → `OnLfgQueueStatusResponse`。
 
-## 遗留隐患（用户确认测试通过后再修）
+## 遗留隐患（已于 2026-08-11 修复，见 lfg-bot-role-spec.md）
 
-- 陪打 bot 的天赋/装备按随机专精随的，没按 `assignedRole` 配——"奶" bot 可能实际不会奶。
-  方向：`PlayerbotFactory` 按 `assignedRole` 指定专精（影响面大，单独做）。
+- ~~陪打 bot 的天赋/装备按随机专精随的，没按 `assignedRole` 配——"奶" bot 可能实际不会奶。~~
+  已修：`Randomize`/`InitTalentsTree` 支持指定专精，spawn 时按 assignedRole 强制。
 
 ## 部署 / 验证 / 回滚
 
