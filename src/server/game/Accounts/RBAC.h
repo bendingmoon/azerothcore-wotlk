@@ -682,6 +682,10 @@ enum RBACPermissions
     RBAC_PERM_COMMAND_RESPAWN_CREATURE_ENTRY                 = 918,
     RBAC_PERM_COMMAND_RESPAWN_GAMEOBJECT_ENTRY               = 919,
     // custom permissions 1000+
+    RBAC_PERM_COMMAND_CHARACTER_MONEY                        = 1000,
+    RBAC_PERM_COMMAND_CHARACTER_MUTE                         = 1001,
+    RBAC_PERM_COMMAND_GO_XYZN                                = 1002,
+    RBAC_PERM_COMMAND_KILLSELF                               = 1003,
     RBAC_PERM_MAX
 };
 

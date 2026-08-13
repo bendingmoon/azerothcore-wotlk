@@ -22,7 +22,8 @@
   **精确等于玩家等级**（夹 [15, randomBotMaxLevel]），天赋仍按分配职责 roll；
   `SetRoles(bot, assignedRole)` 预置职责（rolecheck 秒答用），CombatStop，
   状态 → WAITING_ASSEMBLY 原地待命（有 master 会跟随玩家）。
-- `TryAssembleGroup`（CheckAndCleanup 每 15s 轮询触发，世界线程同步原子执行）：
+- `TryAssembleGroup`（CheckAndCleanup 每 1s 轮询触发——2026-08-13 由 15s 提速，
+  见下"错峰改造"；世界线程同步原子执行）：
   1. 玩家仍 QUEUED、无 DUNGEON_COOLDOWN/DESERTER 光环（有才等下轮，不动队列）；
      bot 有光环则清理换新鲜 bot；
   2. `LeaveLfg(player)` → 需要时 `new Group()+Create+AddGroup` → `AddMember(bot)`×N；
@@ -57,7 +58,9 @@
 ## 行为时序（单人排随机本）
 
 - 0–120s：真人优先撮合（不变）；期间匹配成功则无 bot 介入。
-- 120–180s：spawn + 登录 + 停驻；≤15s 轮询粒度装配；rolecheck 由模块代答当场完成；
+- 120s 起：缺口入队 `m_pendingSpawns`，CheckAndCleanup 每 1s 消化 1 个 spawn、
+  每 1s 最多 1 个 bot 做登录后重初始化（错峰防世界线程尖峰，2026-08-13 改造），
+  整队约 8~12s 上线；装配 ≤1s 轮询粒度触发；rolecheck 由模块代答当场完成；
   满编队入队后**同一撮合 tick 必出 proposal** → 玩家点接受 → 进本。**最坏约 3 分钟**，
   只剩玩家点接受这一个手动环节。
 - 真人自组 2–4 人队同样适用：补齐剩余坑位；真人队员**不会**收到第二次职责确认

@@ -1679,13 +1679,19 @@ void Player::UpdateVisibilityOf(T* target, UpdateData& data,
 {
     GetMap()->AddObjectToPendingUpdateList(target);
 
+    // Bots have no client: skip serializing create/destroy blocks for them
+    // (the UpdateData would be discarded unsent), but keep the visibility
+    // link bookkeeping intact so HaveAtClient & friends behave as before.
+    bool const skipPackets = GetSession() && GetSession()->IsBot();
+
     if (HaveAtClient(target))
     {
         if (!CanSeeOrDetect(target, false, true))
         {
             BeforeVisibilityDestroy<T>(target, this);
 
-            target->BuildOutOfRangeUpdateBlock(&data);
+            if (!skipPackets)
+                target->BuildOutOfRangeUpdateBlock(&data);
             GetObjectVisibilityContainer().UnlinkWorldObjectVisibility(target);
         }
     }
@@ -1693,7 +1699,8 @@ void Player::UpdateVisibilityOf(T* target, UpdateData& data,
     {
         if (CanSeeOrDetect(target, false, true))
         {
-            target->BuildCreateUpdateBlockForPlayer(&data, this);
+            if (!skipPackets)
+                target->BuildCreateUpdateBlockForPlayer(&data, this);
             UpdateVisibilityOf_helper(this, target, visibleNow);
         }
     }
@@ -1712,6 +1719,10 @@ void Player::GetInitialVisiblePackets(Unit* target)
 
 void Player::UpdateVisibilityOf(WorldObject* target)
 {
+    // Bots have no client: keep the visibility links but skip the per-target
+    // packet construction (create/destroy/aura/melee-start blocks).
+    bool const skipPackets = GetSession() && GetSession()->IsBot();
+
     if (HaveAtClient(target))
     {
         if (!CanSeeOrDetect(target, false, true))
@@ -1719,7 +1730,8 @@ void Player::UpdateVisibilityOf(WorldObject* target)
             if (target->IsCreature())
                 BeforeVisibilityDestroy<Creature>(target->ToCreature(), this);
 
-            target->DestroyForPlayer(this);
+            if (!skipPackets)
+                target->DestroyForPlayer(this);
             GetObjectVisibilityContainer().UnlinkWorldObjectVisibility(target);
         }
     }
@@ -1727,14 +1739,18 @@ void Player::UpdateVisibilityOf(WorldObject* target)
     {
         if (CanSeeOrDetect(target, false, true))
         {
-            target->SendUpdateToPlayer(this);
-            GetObjectVisibilityContainer().LinkWorldObjectVisibility(target);
+            if (!skipPackets)
+            {
+                target->SendUpdateToPlayer(this);
 
-            // target aura duration for caster show only if target exist at
-            // caster client send data at target visibility change (adding to
-            // client)
-            if (target->IsUnit())
-                GetInitialVisiblePackets((Unit*) target);
+                // target aura duration for caster show only if target exist at
+                // caster client send data at target visibility change (adding to
+                // client)
+                if (target->IsUnit())
+                    GetInitialVisiblePackets((Unit*) target);
+            }
+
+            GetObjectVisibilityContainer().LinkWorldObjectVisibility(target);
         }
     }
 }

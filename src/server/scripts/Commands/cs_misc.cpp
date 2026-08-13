@@ -155,6 +155,7 @@ public:
             { "groupsummon",       HandleGroupSummonCommand,       rbac::RBAC_PERM_COMMAND_GROUP_SUMMON,      Console::No  },
             { "commands",          HandleCommandsCommand,          rbac::RBAC_PERM_COMMAND_COMMANDS,          Console::Yes },
             { "die",               HandleDieCommand,               rbac::RBAC_PERM_COMMAND_DIE,               Console::No  },
+            { "killself",          HandleKillSelfCommand,          rbac::RBAC_PERM_COMMAND_KILLSELF,          Console::No  },
             { "revive",            HandleReviveCommand,            rbac::RBAC_PERM_COMMAND_REVIVE,            Console::Yes },
             { "dismount",          HandleDismountCommand,          rbac::RBAC_PERM_COMMAND_DISMOUNT,          Console::No  },
             { "guid",              HandleGUIDCommand,              rbac::RBAC_PERM_COMMAND_GUID,              Console::No  },
@@ -1223,6 +1224,27 @@ public:
             {
                 Unit::DealDamage(handler->GetSession()->GetPlayer(), target, target->GetHealth(), nullptr, DIRECT_DAMAGE, SPELL_SCHOOL_MASK_NORMAL, nullptr, false, true);
             }
+        }
+
+        return true;
+    }
+
+    static bool HandleKillSelfCommand(ChatHandler* handler)
+    {
+        Player* target = handler->GetSession()->GetPlayer();
+
+        if (!target)
+        {
+            handler->SendErrorMessage(LANG_SELECT_CHAR_OR_CREATURE);
+            return false;
+        }
+
+        if (target->IsAlive())
+        {
+            if (sWorld->getBoolConfig(CONFIG_DIE_COMMAND_MODE))
+                Unit::Kill(target, target);
+            else
+                Unit::DealDamage(target, target, target->GetHealth(), nullptr, DIRECT_DAMAGE, SPELL_SCHOOL_MASK_NORMAL, nullptr, false, true);
         }
 
         return true;

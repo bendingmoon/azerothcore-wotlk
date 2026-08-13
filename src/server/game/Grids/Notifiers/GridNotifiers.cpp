@@ -81,6 +81,12 @@ void VisibleNotifier::SendToSelf()
     if (!i_data.HasData())
         return;
 
+    // Bots have no client: the bookkeeping above (link/unlink bookkeeping
+    // included) still ran, but the packet build and the per-unit initial
+    // packets would be discarded at the (missing) socket — skip them.
+    if (i_player.GetSession() && i_player.GetSession()->IsBot())
+        return;
+
     WorldPacket packet;
     i_data.BuildPacket(packet);
     i_player.SendDirectMessage(&packet);

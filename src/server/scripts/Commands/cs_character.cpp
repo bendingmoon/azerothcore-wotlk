@@ -72,6 +72,8 @@ public:
             { "erase",          HandleCharacterEraseCommand,            rbac::RBAC_PERM_COMMAND_CHARACTER_ERASE,          Console::Yes },
             { "deleted",        characterDeletedCommandTable },
             { "level",          HandleCharacterLevelCommand,            rbac::RBAC_PERM_COMMAND_CHARACTER_LEVEL,          Console::Yes },
+            { "money",          HandleCharacterMoneyCommand,            rbac::RBAC_PERM_COMMAND_CHARACTER_MONEY,          Console::Yes },
+            { "mute",           HandleCharacterMuteCommand,             rbac::RBAC_PERM_COMMAND_CHARACTER_MUTE,           Console::Yes },
             { "rename",         HandleCharacterRenameCommand,           rbac::RBAC_PERM_COMMAND_CHARACTER_RENAME,         Console::Yes },
             { "reputation",     HandleCharacterReputationCommand,       rbac::RBAC_PERM_COMMAND_CHARACTER_REPUTATION,     Console::Yes },
             { "titles",         HandleCharacterTitlesCommand,           rbac::RBAC_PERM_COMMAND_CHARACTER_TITLES,         Console::Yes }
@@ -456,6 +458,144 @@ public:
 
         if (!handler->GetSession() || (handler->GetSession()->GetPlayer() != player->GetConnectedPlayer()))      // including chr == NULL
             handler->PSendSysMessage(LANG_YOU_CHANGE_LVL, handler->playerLink(*player), newlevel);
+
+        return true;
+    }
+
+    // give or take money of a player by name, works for online and offline players
+    static bool HandleCharacterMoneyCommand(ChatHandler* handler, Optional<PlayerIdentifier> player, Tail money)
+    {
+        if (!player)
+            player = PlayerIdentifier::FromTargetOrSelf(handler);
+
+        if (!player)
+            return false;
+
+        if (money.empty())
+            return false;
+
+        auto IsExistWord = [](std::string_view line, std::initializer_list<std::string_view> words)
+        {
+            for (auto const& word : words)
+            {
+                if (line.find(word) != std::string_view::npos)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        };
+
+        Optional<int32> moneyToAddO = IsExistWord(money, { "g", "s", "c" }) ? MoneyStringToMoney(money) : Acore::StringTo<int32>(money);
+
+        if (!moneyToAddO)
+            return false;
+
+        int32 moneyToAdd = *moneyToAddO;
+
+        if (Player* target = player->GetConnectedPlayer())
+        {
+            uint32 targetMoney = target->GetMoney();
+
+            if (moneyToAdd < 0)
+            {
+                int32 newmoney = int32(targetMoney) + moneyToAdd;
+
+                if (newmoney <= 0)
+                {
+                    handler->PSendSysMessage(LANG_YOU_TAKE_ALL_MONEY, handler->GetNameLink(target));
+                    if (handler->needReportToTarget(target))
+                        ChatHandler(target->GetSession()).PSendSysMessage(LANG_YOURS_ALL_MONEY_GONE, handler->GetNameLink());
+
+                    target->SetMoney(0);
+                }
+                else
+                {
+                    if (newmoney > MAX_MONEY_AMOUNT)
+                        newmoney = MAX_MONEY_AMOUNT;
+
+                    handler->PSendSysMessage(LANG_YOU_TAKE_MONEY, std::abs(moneyToAdd), handler->GetNameLink(target));
+                    if (handler->needReportToTarget(target))
+                        ChatHandler(target->GetSession()).PSendSysMessage(LANG_YOURS_MONEY_TAKEN, handler->GetNameLink(), std::abs(moneyToAdd));
+
+                    target->SetMoney(newmoney);
+                }
+            }
+            else
+            {
+                handler->PSendSysMessage(LANG_YOU_GIVE_MONEY, moneyToAdd, handler->GetNameLink(target));
+                if (handler->needReportToTarget(target))
+                    ChatHandler(target->GetSession()).PSendSysMessage(LANG_YOURS_MONEY_GIVEN, handler->GetNameLink(), moneyToAdd);
+
+                if (moneyToAdd >= MAX_MONEY_AMOUNT)
+                    moneyToAdd = MAX_MONEY_AMOUNT;
+
+                if (targetMoney >= uint32(MAX_MONEY_AMOUNT) - moneyToAdd)
+                    moneyToAdd -= targetMoney;
+
+                target->ModifyMoney(moneyToAdd);
+            }
+        }
+        else
+        {
+            // offline player: update the characters table directly
+            CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_SEL_CHAR_MONEY);
+            stmt->SetData(0, player->GetGUID().GetCounter());
+
+            PreparedQueryResult result = CharacterDatabase.Query(stmt);
+            if (!result)
+            {
+                handler->SendErrorMessage(LANG_PLAYER_NOT_FOUND);
+                return false;
+            }
+
+            uint32 targetMoney = (*result)[0].Get<uint32>();
+            int64 newmoney = int64(targetMoney) + moneyToAdd;
+
+            if (newmoney < 0)
+                newmoney = 0;
+            else if (newmoney > MAX_MONEY_AMOUNT)
+                newmoney = MAX_MONEY_AMOUNT;
+
+            stmt = CharacterDatabase.GetPreparedStatement(CHAR_UDP_CHAR_MONEY);
+            stmt->SetData(0, uint32(newmoney));
+            stmt->SetData(1, player->GetGUID().GetCounter());
+            CharacterDatabase.Execute(stmt);
+
+            if (moneyToAdd < 0)
+            {
+                if (!newmoney)
+                    handler->PSendSysMessage(LANG_YOU_TAKE_ALL_MONEY, handler->playerLink(*player));
+                else
+                    handler->PSendSysMessage(LANG_YOU_TAKE_MONEY, std::abs(moneyToAdd), handler->playerLink(*player));
+            }
+            else
+            {
+                handler->PSendSysMessage(LANG_YOU_GIVE_MONEY, moneyToAdd, handler->playerLink(*player));
+            }
+        }
+
+        return true;
+    }
+
+    // mute or unmute a player by toggling the PLAYER_FLAGS_UNK31 flag (online players only)
+    static bool HandleCharacterMuteCommand(ChatHandler* handler, Optional<PlayerIdentifier> player, uint8 isMute)
+    {
+        if (!player)
+            player = PlayerIdentifier::FromTargetOrSelf(handler);
+
+        if (!player || !player->IsConnected())
+        {
+            handler->SendErrorMessage(LANG_PLAYER_NOT_FOUND);
+            return false;
+        }
+
+        Player* target = player->GetConnectedPlayer();
+        if (isMute == 0)
+            target->SetPlayerFlag(PLAYER_FLAGS_UNK31);
+        else
+            target->RemovePlayerFlag(PLAYER_FLAGS_UNK31);
 
         return true;
     }

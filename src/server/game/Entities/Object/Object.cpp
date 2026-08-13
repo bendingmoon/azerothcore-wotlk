@@ -3046,11 +3046,24 @@ void WorldObject::BuildUpdate(UpdateDataMapType& data_map)
 {
     // Build update for self
     if (IsPlayer())
-        BuildFieldsUpdate(ToPlayer(), data_map);
+    {
+        // Bots have no client — their update data is discarded at the send
+        // gate (OnPlayerbotCheckUpdatesToSend in Map::SendObjectUpdates), so
+        // don't pay the full field serialization for them here.
+        WorldSession* session = ToPlayer()->GetSession();
+        if (!session || !session->IsBot())
+            BuildFieldsUpdate(ToPlayer(), data_map);
+    }
 
     // Build update for visible players
     DoForAllVisiblePlayers([this, &data_map](Player* player)
     {
+        // Same skip for bot receivers: the per-receiver update block (full
+        // field scan + buffer copy) would be thrown away unsent.
+        WorldSession* session = player->GetSession();
+        if (session && session->IsBot())
+            return;
+
         BuildFieldsUpdate(player, data_map);
     });
 

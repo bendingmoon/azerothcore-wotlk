@@ -50,7 +50,8 @@ public:
             { "taxinode",      HandleGoTaxinodeCommand,          rbac::RBAC_PERM_COMMAND_GO, Console::No },
             { "trigger",       HandleGoTriggerCommand,           rbac::RBAC_PERM_COMMAND_GO, Console::No },
             { "zonexy",        HandleGoZoneXYCommand,            rbac::RBAC_PERM_COMMAND_GO, Console::No },
-            { "xyz",           HandleGoXYZCommand,               rbac::RBAC_PERM_COMMAND_GO, Console::No },
+            { "xyz",           HandleGoXYZCommand,               rbac::RBAC_PERM_COMMAND_GO,      Console::No },
+            { "xyzn",          HandleGoXYZNCommand,              rbac::RBAC_PERM_COMMAND_GO_XYZN, Console::Yes },
             { "ticket",        HandleGoTicketCommand,            rbac::RBAC_PERM_COMMAND_GO, Console::No },
             { "quest",         HandleGoQuestCommand,             rbac::RBAC_PERM_COMMAND_GO, Console::No },
         };
@@ -167,6 +168,31 @@ public:
         transport->AddPassenger(player, false);
 
         player->TeleportTo(transport->GetMapId(), worldX, worldY, worldZ, worldO, TELE_TO_NOT_LEAVE_TRANSPORT);
+        return true;
+    }
+
+    static bool DoTeleportTarget(ChatHandler* handler, Player* target, Position pos, uint32 mapId = MAPID_INVALID)
+    {
+        if (mapId == MAPID_INVALID)
+            mapId = target->GetMapId();
+
+        if (!MapMgr::IsValidMapCoord(mapId, pos) || sObjectMgr->IsTransportMap(mapId))
+        {
+            handler->SendErrorMessage(LANG_INVALID_TARGET_COORD, pos.GetPositionX(), pos.GetPositionY(), mapId);
+            return false;
+        }
+
+        // stop flight if need
+        if (target->IsInFlight())
+        {
+            target->GetMotionMaster()->MovementExpired();
+            target->CleanupAfterTaxiFlight();
+        }
+        // save only in non-flight case
+        else
+            target->SaveRecallPosition();
+
+        target->TeleportTo({ mapId, pos });
         return true;
     }
 
@@ -490,6 +516,82 @@ public:
         }
 
         return DoTeleport(handler, { x, y, z, o }, mapId);
+    }
+
+    /**
+     * @brief Teleports a target player to the specified world coordinates, optionally specifying map ID and orientation.
+     *
+     * @param handler The ChatHandler that is handling the command.
+     * @param target The player to teleport (defaults to selected target or self).
+     * @param args The coordinates to teleport to in format "x y z [mapId [orientation]]".
+     * @return true The command was successful.
+     * @return false The command was unsuccessful (show error or syntax)
+     */
+    static bool HandleGoXYZNCommand(ChatHandler* handler, Optional<PlayerIdentifier> target, Tail args)
+    {
+        if (!target)
+            target = PlayerIdentifier::FromTargetOrSelf(handler);
+
+        if (!target)
+            return false;
+
+        std::wstring wInputCoords;
+        if (!Utf8toWStr(args, wInputCoords))
+            return false;
+
+        // extract float and integer values from the input
+        std::vector<float> locationValues;
+        std::wregex floatRegex(L"(-?\\d+(?:\\.\\d+)?)");
+        std::wsregex_iterator floatRegexIterator(wInputCoords.begin(), wInputCoords.end(), floatRegex);
+        std::wsregex_iterator end;
+        while (floatRegexIterator != end)
+        {
+            std::wsmatch match = *floatRegexIterator;
+            std::wstring matchStr = match.str();
+
+            // try to convert the match to a float
+            try
+            {
+                locationValues.push_back(std::stof(matchStr));
+            }
+            // if the match is not a float, do not add it to the vector
+            catch (std::invalid_argument const&){}
+
+            ++floatRegexIterator;
+        }
+
+        // X and Y are required
+        if (locationValues.size() < 2)
+            return false;
+
+        Player* player = target->GetConnectedPlayer();
+        if (!player || !player->GetSession())
+            return false;
+
+        uint32 mapId = locationValues.size() >= 4 ? uint32(locationValues[3]) : player->GetMapId();
+
+        float x = locationValues[0];
+        float y = locationValues[1];
+
+        if (!sMapStore.LookupEntry(mapId) || !MapMgr::IsValidMapCoord(mapId, x, y))
+        {
+            handler->SendErrorMessage(LANG_INVALID_TARGET_COORD, x, y, mapId);
+            return false;
+        }
+
+        Map const* map = sMapMgr->CreateBaseMap(mapId);
+
+        float z = locationValues.size() >= 3 ? locationValues[2] : std::max(map->GetHeight(x, y, MAX_HEIGHT), map->GetWaterLevel(x, y));
+        // map ID (locationValues[3]) already handled above
+        float o = locationValues.size() >= 5 ? locationValues[4] : player->GetOrientation();
+
+        if (!MapMgr::IsValidMapCoord(mapId, x, y, z, o))
+        {
+            handler->SendErrorMessage(LANG_INVALID_TARGET_COORD, x, y, mapId);
+            return false;
+        }
+
+        return DoTeleportTarget(handler, player, { x, y, z, o }, mapId);
     }
 
     static bool HandleGoTicketCommand(ChatHandler* handler, uint32 ticketId)

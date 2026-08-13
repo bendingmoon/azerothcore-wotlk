@@ -207,6 +207,7 @@ void CreatureTemplate::InitializeQueryData()
     queryData << float(ModMana);                                  // dmg/mana modifier
     queryData << uint8(RacialLeader);
     queryData << uint32(movementId);                              // CreatureMovementInfo.dbc
+    queryData << uint32(GossipMenuId);                              //GossipMenuId
 }
 
 bool AssistDelayEvent::Execute(uint64 /*e_time*/, uint32 /*p_time*/)

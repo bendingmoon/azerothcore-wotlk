@@ -40,6 +40,7 @@ This file is the curated index for Kimi Code CLI. Detailed feature memories live
 | [relogin-no-ui-fix.md](relogin-no-ui-fix.md) | 重登/杀进程重登后主 UI 全不显示：直接根因 SceneEnterMgr ExtraUi 静态表原地改写致二次进场景 gmatch 崩溃、面板列表为空；服务端接管路径改"先踢后登"统一完整登录序列；客户端登出流程补全（76 处理器/正式清理/关双连接/免弹窗）+ 场景兜底（firstInScene 15s 超时/SwitchMap 判空重试）（2026-08-11） |
 | [tbc-pvp-prices.md](tbc-pvp-prices.md) | TBC S4 赛季 PvP 价格还原：S3/S4 竞技场点数+等级门槛、荣誉散件荣誉+牌子（itemextendedcost_dbc 10000+ 段，SQL+生成脚本+conf/赛季配套），待办客户端 DBC 补丁与 S2（2026-07-28） |
 | [other-memories.md](other-memories.md) | Index of original Claude Code memories |
+| [worldserver-lag-spike-analysis.md](worldserver-lag-spike-analysis.md) | 世界服 Update time diff 尖峰分析：主因 LFG 按需 bot 成批登录+Randomize（重试放大）；方案=先错峰退避后池化复用；含 PerfMon/gdb 验证法、配置调整、杂项清理、代码索引（2026-08-12） |
 
 ## Memory Management Rule
 

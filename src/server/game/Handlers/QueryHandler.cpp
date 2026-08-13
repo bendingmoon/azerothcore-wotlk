@@ -162,6 +162,7 @@ void WorldSession::HandleCreatureQueryOpcode(WorldPacket& recvData)
                 data << uint32(0);
 
         data << uint32(ci->movementId);                              // CreatureMovementInfo.dbc
+        data<<uint32(ci->GossipMenuId);
         SendPacket(&data);
     }
     else
