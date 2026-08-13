@@ -48,6 +48,16 @@ bool ScriptMgr::OnPlayerbotCanChangeGroupLeader(Group* group, Player* newLeader)
     return true;
 }
 
+bool ScriptMgr::OnPlayerbotLfgKickBypassVote(Group* group, ObjectGuid kicker, ObjectGuid victim)
+{
+    auto ret = IsValidBoolScript<PlayerbotScript>([&](PlayerbotScript* script)
+    {
+        return script->OnPlayerbotLfgKickBypassVote(group, kicker, victim);
+    });
+
+    return ret && *ret;
+}
+
 void ScriptMgr::OnPlayerbotCheckKillTask(Player* player, Unit* victim)
 {
     ExecuteScript<PlayerbotScript>([&](PlayerbotScript* script)

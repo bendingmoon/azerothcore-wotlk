@@ -2,6 +2,11 @@
 
 > 需求：真人排随机地下城时，先给真人之间撮合的机会；排队超过 2 分钟没匹配到真人，陪打 bot 才开始介入匹配。
 
+> **2026-08-12 更新**：2 分钟门控本身保留不变，但门控之后的"bot solo 进公共撮合池"
+> 已被废弃，改为服务端强制组队装配（满编整排必出 proposal）。匹配机制以
+> [lfg-bot-force-assembly.md](lfg-bot-force-assembly.md) 为准；本文其余部分
+> 仅延迟门控与踢人补位豁免仍然有效。
+
 ## 实现方案
 
 - bot spawn 的唯一入口是 `LfgGroupBotMgr::OnPlayerQueueForLfg`（由

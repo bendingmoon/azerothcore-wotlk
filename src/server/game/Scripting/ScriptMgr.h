@@ -117,6 +117,8 @@ public:
 
     [[nodiscard]] virtual bool OnPlayerbotCheckLFGQueue(lfg::Lfg5Guids const& /*guidsList*/) { return true; }
     [[nodiscard]] virtual bool OnPlayerbotCanChangeGroupLeader(Group* /*group*/, Player* /*newLeader*/) { return true; }
+    // true = skip the LFG vote kick and remove the victim from the group directly
+    [[nodiscard]] virtual bool OnPlayerbotLfgKickBypassVote(Group* /*group*/, ObjectGuid /*kicker*/, ObjectGuid /*victim*/) { return false; }
     virtual void OnPlayerbotCheckKillTask(Player* /*player*/, Unit* /*victim*/) { }
     virtual void OnPlayerbotCheckPetitionAccount(Player* /*player*/, bool& /*found*/) { }
     [[nodiscard]] virtual bool OnPlayerbotCheckUpdatesToSend(Player* /*player*/) { return true; }
@@ -748,6 +750,7 @@ public: /* PlayerbotScript */
     
     bool OnPlayerbotCheckLFGQueue(lfg::Lfg5Guids const& guidsList);
     bool OnPlayerbotCanChangeGroupLeader(Group* group, Player* newLeader);
+    bool OnPlayerbotLfgKickBypassVote(Group* group, ObjectGuid kicker, ObjectGuid victim);
     void OnPlayerbotCheckKillTask(Player* player, Unit* victim);
     void OnPlayerbotCheckPetitionAccount(Player* player, bool& found);
     bool OnPlayerbotCheckUpdatesToSend(Player* player);

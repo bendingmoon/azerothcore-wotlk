@@ -557,7 +557,13 @@ bool Group::RemoveMember(ObjectGuid guid, const RemoveMethod& method /*= GROUP_R
     // LFG group vote kick handled in scripts
     if (isLFGGroup(true) && method == GROUP_REMOVEMETHOD_KICK)
     {
-        sLFGMgr->InitBoot(GetGUID(), kicker, guid, std::string(reason ? reason : ""));
+        // mod-playerbots: a real-player leader kicking a bot skips the vote
+        // entirely and the bot is removed directly
+        if (sScriptMgr->OnPlayerbotLfgKickBypassVote(this, kicker, guid))
+            Player::RemoveFromGroup(this, guid, GROUP_REMOVEMETHOD_KICK_LFG);
+        else
+            sLFGMgr->InitBoot(GetGUID(), kicker, guid, std::string(reason ? reason : ""));
+
         return m_memberSlots.size() > 0;
     }
 
