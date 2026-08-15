@@ -189,7 +189,7 @@ bool Corpse::IsExpired(time_t t) const
     if (m_type == CORPSE_BONES)
         return m_time < t - 60 * MINUTE;
     else
-        return m_time < t - 3 * DAY;
+        return m_time < t - 2 * HOUR;
 }
 
 void Corpse::ResetGhostTime()

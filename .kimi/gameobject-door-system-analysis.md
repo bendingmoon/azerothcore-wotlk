@@ -75,7 +75,7 @@
 - [x] 本地碰撞：关门挡路 = 门子网格的 BakeMesh MeshCollider（layer 19，`SetupDoorBlocker`），`AllowPass` 按状态开关。寻路为直线 steering，无动态障碍概念。
 - [x] 交互：点门 ≤5 码发 `CMSG_GAMEOBJ_USE`(177,guid)（`TouchObject.setPlayerTarget` type==0 分支，复用现成 `WNPCMgr.UseGameObject` 链路）；超距弹提示"你距离太远，走近点再开门"（`WMapMgr.ShowTips`）。
 - [x] 锁门策略：**不做 Lock 检查**（产品决策：一律直接开；服务端本不校验）。`TouchObject` 的 Data1≠0 锁分支已收窄为仅 type 1。
-- [ ] **实测验证**（编辑器进破碎大厅）：门朝向与门框吻合（若差恒定 90°，在 `SetDoorRotationFromPacked` 补 `* Quaternion.Euler(0,90,0)`）；初始关闭；点击开/关切换；关门挡人；BOSS 进战自动关、死亡自动开；宝箱/电梯回归。
+- [x] **实测验证**（编辑器进破碎大厅，2026-08-14 通过）：门朝向与门框吻合（补偿方向实测为 `* Quaternion.Euler(0,-90,0)`）；初始关闭；点击开/关切换（世界竖直轴 90° 翻转模拟）；关门挡人、开门放行；难选中/超距提示/点选体随开门禁用均已验证。
 - [x] （已完成的关联修复）`WMapMgr.AreaTrigger.cs` 的 `PositionToGridKey` 已从 `(x,z)` 改为 `(x,y)`（服务器坐标 z 是高度）。
 
 ## 四、服务端可选改动（尚未做，按需提）
@@ -123,5 +123,7 @@
   2. **network 日志**（免编译）：worldserver.conf 加 `Logger.network=5,Console Server`，点门看有无 `WORLD: Recvd CMSG_GAMEOBJ_USE Message`。无此行 → 包没到 handler；有此行 → 只剩距离/状态静默 return，再加临时日志（需重编译）定位。
 - **联调结论（已实锤）**：177 全链正常——点门服务端切状态、客户端收包、`AllowPass` 关碰撞、人能过。当时"没反应"只是**视觉没动**。
 - **门动画为何播不了**：GO/地图 doodad 走离线 glTF 预制体管线（`GLTFLoaderMgr`），导出时未出动画资产（exports 下 world/dungeons 无 Animations 目录）；m2anim（`M2RuntimeAnimator`）只对角色/生物的运行时 M2 管线（`Character`/`Creature`+`M2Simple`）接线，GO 预制体无 `Character` 组件 → `WAnimator.Play("Open")` 恒空跑（控制台有 `M2Animator 未初始化` 警告）。动画名表没问题：`AnimationDataWoW` 有 Open=148/Close=146/Opened=149/Closed=147。
+- **门难选中**：点选射线只打得到根部的自动 1×2×1 trigger 盒（预制体无碰撞体），所以只能点根部附近。修复：`AddDoorCollider` 在网格节点下再挂一个**点选碰撞体**——复用 BakeMesh 的网格（不重烘），trigger，layer=ELF（在点选 mask 内），**节点名必须是 UID 字符串**（`TouchObject.JudegeType` 靠 `ulong.TryParse(collider.name)` 映射实体）。**注意：本项目 `Physics.queriesHitTriggers` 为 true 时 trigger 也会参与 CharacterController 的移动扫掠——点选体在开门时必须和挡路体一起禁用，否则开着门也过不去**（实测踩过）。开门后要再关门，点根部默认小盒即可。无网格可烘焙时不做任何放大，点选退回根部默认小盒。
+- **超距提示**：点门超过 5 码弹"你距离太远，走近点再开门"（`WMapMgr.ShowTips`），仍会选中不发送 177。
 - **门模拟动画（当前实现）**：`WGameObject.PlayDoorVisual(bool open, bool instant)` 是**视觉唯一入口**——**在世界空间**绕竖直轴（Unity Y）、以渲染包围盒中心为轴心翻转 90°（`DoorOpenAngle`），0.8s 插值（`DoorAnimDuration`），创建/刷新时 instant 定格。转的是预制体实例子节点，与实体朝向/DoorBlocker 无冲突。注意：翻转**必须做在世界空间**——最初在预制体局部空间 `Euler(0,angle,0)`，因 M2 模型局部 Y 轴不是世界竖直轴，门会"倒下"。**【以后要换真动画（M2 管线或 clip）只改 PlayDoorVisual 内部，DoStateAnimation 等调用方不动】**。可选方向：A) GO 接运行时 M2 管线（M2Simple 解析 doodad .m2 + InitAnimator）；B) 导出工程补 doodad 动画 clip 后按名播放。
 - **DoorBlocker 最终方案 = BakeMesh 碰撞体**：踩坑历程——① 用 displayinfo GeoBox 算：与视觉差 90°（GeoBox 是 M2 模型空间，轴约定和运行时模型不一致）；② 渲染节点世界 AABB：太大（门框/装饰刺全包进去）；③ 直接拿蒙皮网格 sharedMesh 加 MeshCollider：错位横躺（**蒙皮渲染位置由骨骼驱动，sharedMesh 只是绑定姿态的原始顶点**）。最终：`SkinnedMeshRenderer.BakeMesh()` 烘焙当前渲染姿态成新网格（顶点在 SMR 本地空间），挂到 SMR 节点下（identity 局部变换）→ 与视觉严格重合；静态网格（MeshFilter）直接用原网格。layer 19 保证 CharacterController 碰撞；关门启用、开门禁用（`AllowPass` 遍历 `_doorBlockers`）。烘焙网格是运行时 new 的 Unity 对象，`OnDestrory`/`Initialize` 里 `CleanupDoorBakedMeshes()` 手动 Destroy 防泄漏。另注意：门模型走**运行时 M2 管线**（`SpellObjects : ModelRenderer`，`buildM2/*.m2.bytes` 现场建网格），管线本身不建碰撞体（`Character.cs:1091`/`Creature.cs:641` 的加碰撞代码是注释掉的），根部只有 `WModel` 自动加的 1×2×1 trigger BoxCollider（点选用）——"启用预制体现成碰撞体"这条路不存在，必须现加。
