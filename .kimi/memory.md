@@ -26,11 +26,14 @@ This file is the curated index for Kimi Code CLI. Detailed feature memories live
 | [lfg-bot-dungeon-teleport-fallback-fix.md](lfg-bot-dungeon-teleport-fallback-fix.md) | LFG bot 在队满血但不进本：兜底补发仍被 TeleportPlayer 检查卡死（战斗/坠落/疲劳不自愈）→ 两段式（补发→CombatStop+直接 TeleportTo 强拉）+ 传送途中防误清理（2026-08-12） |
 | [lfg-votekick-small-group-fix.md](lfg-votekick-small-group-fix.md) | LFG 真人队长踢 bot 免投票直接出队：新钩子 OnPlayerbotLfgKickBypassVote + Group.cpp 直踢分支（计票逻辑未动；≤3 人队投票踢不出真人是原版特性）（2026-08-12） |
 | [lfg-bot-force-assembly.md](lfg-bot-force-assembly.md) | LFG 强制组队装配：废弃撮合池，2 分钟后服务端直接组队整排必出 proposal；补位 bot 只排当前本；proposal 接受加固（2026-08-12） |
+| [lfg-solo-group-disband.md](lfg-solo-group-disband.md) | 随机本掉线重登后不显示进入副本+退不出队列：单人 LFG 组存活 → 0 成员 GROUP_LIST 被前端误判解散 → 状态死锁；修复=RemoveMember 剩 1 人时按"最后成员"条件解散（在线在副本里则保留）+ 客户端 OnGroupList 用 LeaderGuid 区分单人 LFG 队伍与真解散（2026-08-13） |
+| [lfg-bot-groupless-cleanup.md](lfg-bot-groupless-cleanup.md) | LFG bot 掉出队伍立即清理：wasGrouped 标记区分"进过组又掉出来"与"停驻/池排队本来无组"，前者轮询即清不再等超时（2026-08-13） |
 | [lfg-bot-role-spec.md](lfg-bot-role-spec.md) | LFG 陪打 bot 按分配职责生成天赋：Randomize/InitTalentsTree 支持指定专精 + 职责→specno 映射（坦/奶/DPS 各归其位，装备/铭文/策略/职责应答自动传导）（2026-08-11） |
 | [lfg-leader-transfer-rules.md](lfg-leader-transfer-rules.md) | LFG 队伍队长规则：新钩子 OnPlayerbotCanChangeGroupLeader 禁止传队长给 bot（只拦手动）；OnChangeLeader 里 LFG 组传给真人时所有 bot 的 master 切新队长（2026-08-11） |
 | [death-state-sync-fix.md](death-state-sync-fix.md) | 死亡卡死/无灵魂状态/血条残留：前端死亡判断改 GHOST 标志驱动（活人 HP=1 不误判）+ Attr.IsDead 直接置位 + 事件兜底重发；playerbots 死后自动行为跳过真人（2026-07-25） |
 | [death-release-stuck-fix.md](death-release-stuck-fix.md) | 死亡卡死防御性修复：IsDead setter 标志/清血条提前+全防护、UpdateAttrValue/EquipVisible 补 try-catch、GetUpdateValues 空 catch 加日志、Update() 每秒补弹释放框；Repop/SelfResurrect 加真人守卫（2026-07-29） |
 | [quest-state-refresh-fix.md](quest-state-refresh-fix.md) | 接任务后 TalkDlg2 选项不刷新/NPC 头顶标识不对：C# 接交任务后重拉 gossip + Lua GotoNpc 改为原地重建选项 + WNpcFxComponent 状态缓存同步（2026-07-26） |
+| [quest-giver-icon-missing-fix.md](quest-giver-icon-missing-fix.md) | NPC 该有感叹号却不显示：删掉单查回包 status==8 的 QUESTGIVER 旗标丢弃 + refreshNpcStatus 补 6/7/9 状态映射 + LoadingEnd 补发切图批量刷新（2026-08-14） |
 | [remote-movement-sync.md](remote-movement-sync.md) | 远程玩家移动同步全套修复：航位推测+追赶加速+防倒退+追停朝向；官方端游发送端协议差异（STOP 残留标志/STOP_STRAFE 真停/SET_FACING 无标志/心跳稀疏）；待优化项（2026-07-27） |
 | [spell-fx-lifetime-fix.md](spell-fx-lifetime-fix.md) | 技能/buff/引导特效生命周期整体修复：自毁链收口 OwnerFxId、消退窗口防硬切、IsBullet 去重、死亡清理、引导特效绑定时长、WBuff 用错管理器泄漏（2026-07-27） |
 | [skill-cast-stuck-fix.md](skill-cast-stuck-fix.md) | 卡技能全链修复（纯前端）：群CD豁免无GCD技能、等待队列移动不清+过期、读条看门狗、_autoSkillId 精确吞包、_waitSkillId 自愈、排队高亮即时化 + 双端 CD 对齐 6 项（COOLDOWN_EVENT 反向/rec优先/类别扇出/GO起算/打断撤GCD/急速GCD）；含服务端技能与 CD 模型参考（2026-08-11） |
@@ -41,6 +44,7 @@ This file is the curated index for Kimi Code CLI. Detailed feature memories live
 | [tbc-pvp-prices.md](tbc-pvp-prices.md) | TBC S4 赛季 PvP 价格还原：S3/S4 竞技场点数+等级门槛、荣誉散件荣誉+牌子（itemextendedcost_dbc 10000+ 段，SQL+生成脚本+conf/赛季配套），待办客户端 DBC 补丁与 S2（2026-07-28） |
 | [other-memories.md](other-memories.md) | Index of original Claude Code memories |
 | [worldserver-lag-spike-analysis.md](worldserver-lag-spike-analysis.md) | 世界服 Update time diff 尖峰分析：主因 LFG 按需 bot 成批登录+Randomize（重试放大）；方案=先错峰退避后池化复用；含 PerfMon/gdb 验证法、配置调整、杂项清理、代码索引（2026-08-12） |
+| [gameobject-door-system-analysis.md](gameobject-door-system-analysis.md) | 门系统全链路：破碎大厅小怪免疫事件链（AT 4347/开门触发）、GO 字段布局（BYTES_1/PARENTROTATION/FLAGS）、CMSG_GAMEOBJ_USE(177) 无锁校验、四元数转换公式 q=(-y,-z,x,w)、前端门渲染+交互待办清单（2026-08-14） |
 
 ## Memory Management Rule
 

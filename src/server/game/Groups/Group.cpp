@@ -665,12 +665,18 @@ bool Group::RemoveMember(ObjectGuid guid, const RemoveMethod& method /*= GROUP_R
             //return false;
         }
 
+        // A one-man LFG group can never refill on its own. Disband it once the
+        // last member is gone for good (offline, no dungeon left, dead LFG
+        // state, or already outside the dungeon map) — an offline leftover
+        // only desyncs his dungeon finder UI on relogin. An online member
+        // still inside the dungeon keeps the group so he can loot, finish and
+        // leave on his own (retail behavior).
         if (isLFGGroup() && GetMembersCount() == 1)
         {
-            Player* leader = ObjectAccessor::FindConnectedPlayer(GetLeaderGUID());
+            Player* lastMember = ObjectAccessor::FindConnectedPlayer(m_memberSlots.begin()->guid);
             uint32 mapId = sLFGMgr->GetDungeonMapId(GetGUID());
-            lfg::LfgState state = sLFGMgr->GetState(GetGUID());
-            if (!mapId || !leader || (leader->IsAlive() && leader->GetMapId() != mapId) || state == lfg::LFG_STATE_NONE)
+            if (!lastMember || !mapId || sLFGMgr->GetState(GetGUID()) == lfg::LFG_STATE_NONE ||
+                (lastMember->IsAlive() && lastMember->GetMapId() != mapId))
             {
                 Disband();
                 return false;
