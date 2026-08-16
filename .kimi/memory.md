@@ -47,6 +47,8 @@ This file is the curated index for Kimi Code CLI. Detailed feature memories live
 | [worldserver-lag-spike-analysis.md](worldserver-lag-spike-analysis.md) | 世界服 Update time diff 尖峰分析：主因 LFG 按需 bot 成批登录+Randomize（重试放大）；方案=先错峰退避后池化复用；含 PerfMon/gdb 验证法、配置调整、杂项清理、代码索引（2026-08-12） |
 | [gameobject-door-system-analysis.md](gameobject-door-system-analysis.md) | 门系统全链路：破碎大厅小怪免疫事件链（AT 4347/开门触发）、GO 字段布局（BYTES_1/PARENTROTATION/FLAGS）、CMSG_GAMEOBJ_USE(177) 无锁校验、四元数转换公式 q=(-y,-z,x,w)、前端门渲染+交互待办清单（2026-08-14） |
 | [lfg-bot-corpse-pile-fix.md](lfg-bot-corpse-pile-fix.md) | 奥格尸体堆：副本战死 bot 被 OnRemoveMember 的 TeleportToEntryPoint（无死亡检查）拉回奥格、登出落库留 3 天；修复=清理登出前复活+清尸，尸体过期 3 天→2 小时（2026-08-15） |
+| [lfg-bot-refollow-after-master-death.md](lfg-bot-refollow-after-master-death.md) | 队长死一次后 bot 永不跟随：释放灵魂转发包给活 bot 上 -follow,+stay，恢复仅认 20 码内 CMSG_RECLAIM_CORPSE（被奶活/离远即永久卡死）；修复=CheckAndCleanup 1s 轮询主人复活即 +follow,-stay（2026-08-16） |
+| [lfg-bot-cleanup-during-combat-fix.md](lfg-bot-cleanup-during-combat-fix.md) | 城墙老三杀瓦兹德后 bot 战斗中消失：LFG 完成判定绑 17537 瓦兹德之死（纳杉还活着）→ FINISHED 即清 bot；修复=清理前检查队伍任一成员战斗中则跳过下秒重查（2026-08-16） |
 
 ## Memory Management Rule
 
