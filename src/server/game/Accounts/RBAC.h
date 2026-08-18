@@ -686,6 +686,8 @@ enum RBACPermissions
     RBAC_PERM_COMMAND_CHARACTER_MUTE                         = 1001,
     RBAC_PERM_COMMAND_GO_XYZN                                = 1002,
     RBAC_PERM_COMMAND_KILLSELF                               = 1003,
+    RBAC_PERM_COMMAND_NPC_CLEANCORPSES                       = 1004,
+    RBAC_PERM_COMMAND_CHARACTER_SETREPUTATION                = 1005,
     RBAC_PERM_MAX
 };
 

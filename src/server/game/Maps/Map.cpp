@@ -3086,6 +3086,36 @@ void Map::RemoveOldCorpses()
     }
 }
 
+// Force-removes every player corpse and bones on this map, ignoring decay
+// timers. Corpses are also deleted from the character DB so they do not
+// reappear after a restart (bones are never persisted). A dead player whose
+// corpse is removed can no longer reclaim it and must use a spirit healer.
+uint32 Map::RemoveAllPlayerCorpses()
+{
+    // Collect first: RemoveCorpse() mutates _corpsesByPlayer/_corpseBones.
+    std::vector<Corpse*> corpses;
+    corpses.reserve(_corpsesByPlayer.size() + _corpseBones.size());
+    for (auto const& p : _corpsesByPlayer)
+        corpses.push_back(p.second);
+    for (Corpse* bones : _corpseBones)
+        corpses.push_back(bones);
+
+    uint32 count = 0;
+    for (Corpse* corpse : corpses)
+    {
+        RemoveCorpse(corpse);
+        if (corpse->GetType() != CORPSE_BONES)
+        {
+            CharacterDatabaseTransaction trans = CharacterDatabase.BeginTransaction();
+            corpse->DeleteFromDB(trans);
+            CharacterDatabase.CommitTransaction(trans);
+        }
+        delete corpse;
+        ++count;
+    }
+    return count;
+}
+
 void Map::ScheduleCreatureRespawn(ObjectGuid creatureGuid, Milliseconds respawnTimer, Position pos)
 {
     Events.AddEventAtOffset([this, creatureGuid, pos]()

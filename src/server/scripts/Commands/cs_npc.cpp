@@ -31,7 +31,9 @@
 #include "PoolMgr.h"
 #include "RBAC.h"
 #include "TargetedMovementGenerator.h"                      // for HandleNpcUnFollowCommand
+#include "TemporarySummon.h"
 #include "Transport.h"
+#include "TypeContainerVisitor.h"
 #include <string>
 #include <unordered_set>
 
@@ -202,13 +204,85 @@ public:
             { "load",           HandleNpcLoadCommand,              SEC_ADMINISTRATOR, Console::Yes },
             { "set",            npcSetCommandTable },
             { "spawngroup",     HandleNpcSpawnGroupCommand,        SEC_ADMINISTRATOR, Console::No },
-            { "despawngroup",   HandleNpcDespawnGroupCommand,      SEC_ADMINISTRATOR, Console::No }
+            { "despawngroup",   HandleNpcDespawnGroupCommand,      SEC_ADMINISTRATOR, Console::No },
+            { "cleancorpses",   HandleNpcCleanCorpsesCommand,      rbac::RBAC_PERM_COMMAND_NPC_CLEANCORPSES, Console::Yes }
         };
         static ChatCommandTable commandTable =
         {
             { "npc", npcCommandTable }
         };
         return commandTable;
+    }
+
+    // Collects creature corpses (visible dead bodies) from a map's object store.
+    // DeathState::Dead is already invisible (awaiting respawn) and is left alone.
+    class CorpseCleanupWorker
+    {
+    public:
+        void Visit(std::unordered_map<ObjectGuid, Creature*>& creatureMap)
+        {
+            for (auto const& p : creatureMap)
+            {
+                Creature* creature = p.second;
+                // Skip pets: they belong to players and are handled by pet despawn logic.
+                if (creature->getDeathState() == DeathState::Corpse && !creature->IsPet())
+                    corpses.push_back(creature);
+            }
+        }
+
+        template<class T>
+        void Visit(std::unordered_map<ObjectGuid, T*>&) { }
+
+        std::vector<Creature*> corpses;
+    };
+
+    static uint32 CleanCorpsesOnMap(Map* map)
+    {
+        // Collect first: despawning modifies the object store and would
+        // invalidate iteration.
+        CorpseCleanupWorker worker;
+        TypeContainerVisitor<CorpseCleanupWorker, MapStoredObjectTypesContainer> visitor(worker);
+        visitor.Visit(map->GetObjectsStore());
+
+        uint32 count = 0;
+        for (Creature* creature : worker.corpses)
+        {
+            if (TempSummon* summon = creature->ToTempSummon())
+                summon->UnSummon();          // remove summoned corpses entirely
+            else
+                creature->RemoveCorpse(true); // DB spawn: despawn corpse, keep normal respawn schedule
+            ++count;
+        }
+        return count;
+    }
+
+    // .npc cleancorpses [all] — remove creature corpses from the current map,
+    // or from every loaded map when "all" is given (required from console).
+    static bool HandleNpcCleanCorpsesCommand(ChatHandler* handler, Optional<std::string> scope)
+    {
+        bool allMaps = scope.has_value();
+        if (allMaps && *scope != "all")
+        {
+            handler->SendSysMessage("Usage: .npc cleancorpses [all]");
+            handler->SetSentErrorMessage(true);
+            return false;
+        }
+
+        if (!allMaps && !handler->GetSession())
+        {
+            handler->SendSysMessage("Console usage: .npc cleancorpses all");
+            handler->SetSentErrorMessage(true);
+            return false;
+        }
+
+        uint32 count = 0;
+        if (allMaps)
+            sMapMgr->DoForAllMaps([&count](Map* map) { count += CleanCorpsesOnMap(map); });
+        else
+            count = CleanCorpsesOnMap(handler->GetSession()->GetPlayer()->GetMap());
+
+        handler->PSendSysMessage("Removed {} creature corpses.", count);
+        return true;
     }
 
     //add spawn of creature

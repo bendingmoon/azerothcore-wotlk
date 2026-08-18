@@ -1565,7 +1565,18 @@ struct npc_chesspiece : public ScriptedAI
             if (Unit* charmer = ObjectAccessor::GetUnit(*me, _charmerGUID))
             {
                 charmer->RemoveAurasDueToSpell(SPELL_CONTROL_PIECE);
-                charmer->CastSpell(charmer, SPELL_GAME_IN_SESSION, true);
+
+                // Only re-apply the spectator silence while a game is actually running.
+                // After the event ends (win/lose/restart) the instance script removes it
+                // for everyone and re-applying here would leave it stuck until death.
+                uint32 chessPhase = _instance->GetData(DATA_CHESS_GAME_PHASE);
+                uint32 chessEvent = _instance->GetData(DATA_CHESS_EVENT);
+                bool gameRunning = (chessPhase == CHESS_PHASE_PVE_WARMUP || chessPhase == CHESS_PHASE_PVP_WARMUP ||
+                                    chessPhase == CHESS_PHASE_INPROGRESS_PVE || chessPhase == CHESS_PHASE_INPROGRESS_PVP) &&
+                                   (chessEvent == IN_PROGRESS || chessEvent == SPECIAL);
+                if (gameRunning)
+                    charmer->CastSpell(charmer, SPELL_GAME_IN_SESSION, true);
+
                 charmer->CastSpell(charmer, SPELL_RECENTLY_INGAME, true);
                 charmer->NearTeleportTo(-11106.92f, -1843.32f, 229.626f, 4.2331f);
             }

@@ -2498,6 +2498,15 @@ MaxHonorPoints = 75000
 MaxHonorPointsMoneyPerPoint = 0
 
 #
+#    DailyHonorLimit
+#        Description: Maximum honor points a character can gain per day from kills (world PvP).
+#                     Battleground, quest and duel honor rewards are not affected.
+#                     The daily counter resets at the UTC day boundary (00:00 UTC).
+#        Default:     0 - Disabled (unlimited)
+
+DailyHonorLimit = 0
+
+#
 #    StartHonorPoints
 #        Description: Amount of honor points that characters have after creation.
 #        Default:     0

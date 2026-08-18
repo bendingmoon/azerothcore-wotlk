@@ -247,6 +247,8 @@ void WorldConfig::BuildConfigCache()
 
     SetConfigValue<uint32>(CONFIG_MAX_HONOR_POINTS_MONEY_PER_POINT, "MaxHonorPointsMoneyPerPoint", 0);
 
+    SetConfigValue<uint32>(CONFIG_DAILY_HONOR_LIMIT, "DailyHonorLimit", 0, ConfigValueCache::Reloadable::Yes);
+
     SetConfigValue<uint32>(CONFIG_START_HONOR_POINTS, "StartHonorPoints", 0, ConfigValueCache::Reloadable::Yes, [this](uint32 const& value) { return value <= GetConfigValue<uint32>(CONFIG_MAX_HONOR_POINTS); }, "<= CONFIG_MAX_HONOR_POINTS");
 
     SetConfigValue<uint32>(CONFIG_MAX_ARENA_POINTS, "MaxArenaPoints", 10000);

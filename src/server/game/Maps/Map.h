@@ -479,6 +479,7 @@ public:
     void RemoveCorpse(Corpse* corpse);
     Corpse* ConvertCorpseToBones(ObjectGuid const& ownerGuid, bool insignia = false);
     void RemoveOldCorpses();
+    uint32 RemoveAllPlayerCorpses();
 
     static void DeleteRespawnTimesInDB(uint16 mapId, uint32 instanceId);
 

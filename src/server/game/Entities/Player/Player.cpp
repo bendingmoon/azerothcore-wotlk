@@ -6207,6 +6207,25 @@ bool Player::RewardHonor(Unit* uVictim, uint32 groupsize, int32 honor, bool awar
     honor_f *= sWorld->getRate(RATE_HONOR);
     // Back to int now
     honor = int32(honor_f);
+
+    // Daily honor gain limit, applies only to honor from kills (world PvP).
+    // PLAYER_FIELD_TODAY_CONTRIBUTION was already rolled over by UpdateHonorFields() above,
+    // so it always holds today's accumulated honor at this point.
+    if (uVictim)
+    {
+        if (uint32 dailyLimit = sWorld->getIntConfig(CONFIG_DAILY_HONOR_LIMIT))
+        {
+            uint32 todayHonor = GetUInt32Value(PLAYER_FIELD_TODAY_CONTRIBUTION);
+            if (todayHonor >= dailyLimit)
+            {
+                ChatHandler(GetSession()).SendSysMessage("你今天通过击杀获得的荣誉已达上限。");
+                return false;
+            }
+
+            if (uint32(honor) > dailyLimit - todayHonor)
+                honor = dailyLimit - todayHonor;
+        }
+    }
     // honor - for show honor points in log
     // victim_guid - for show victim name in log
     // victim_rank [1..4]  HK: <dishonored rank>

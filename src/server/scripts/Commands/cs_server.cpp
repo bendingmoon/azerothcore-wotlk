@@ -101,12 +101,33 @@ public:
     }
 
     // Triggering corpses expire check in world
-    static bool HandleServerCorpsesCommand(ChatHandler* /*handler*/)
+    // .server corpses      — remove expired player corpses/bones (default decay rules)
+    // .server corpses all  — force-remove ALL player corpses and bones on every loaded map
+    static bool HandleServerCorpsesCommand(ChatHandler* handler, Optional<std::string> arg)
     {
-        sMapMgr->DoForAllMaps([](Map* map)
+        bool all = arg.has_value();
+        if (all && *arg != "all")
         {
-            map->RemoveOldCorpses();
+            handler->SendSysMessage("Usage: .server corpses [all]");
+            handler->SetSentErrorMessage(true);
+            return false;
+        }
+
+        if (!all)
+        {
+            sMapMgr->DoForAllMaps([](Map* map)
+            {
+                map->RemoveOldCorpses();
+            });
+            return true;
+        }
+
+        uint32 removed = 0;
+        sMapMgr->DoForAllMaps([&removed](Map* map)
+        {
+            removed += map->RemoveAllPlayerCorpses();
         });
+        handler->PSendSysMessage("Removed {} player corpses/bones.", removed);
         return true;
     }
 

@@ -27,6 +27,7 @@
 #include "PlayerDump.h"
 #include "RBAC.h"
 #include "ReputationMgr.h"
+#include "StringConvert.h"
 #include "Timer.h"
 #include "World.h"
 #include "WorldSession.h"
@@ -76,6 +77,7 @@ public:
             { "mute",           HandleCharacterMuteCommand,             rbac::RBAC_PERM_COMMAND_CHARACTER_MUTE,           Console::Yes },
             { "rename",         HandleCharacterRenameCommand,           rbac::RBAC_PERM_COMMAND_CHARACTER_RENAME,         Console::Yes },
             { "reputation",     HandleCharacterReputationCommand,       rbac::RBAC_PERM_COMMAND_CHARACTER_REPUTATION,     Console::Yes },
+            { "setreputation",  HandleCharacterSetReputationCommand,    rbac::RBAC_PERM_COMMAND_CHARACTER_SETREPUTATION,  Console::Yes },
             { "titles",         HandleCharacterTitlesCommand,           rbac::RBAC_PERM_COMMAND_CHARACTER_TITLES,         Console::Yes }
         };
 
@@ -718,6 +720,279 @@ public:
             handler->SendSysMessage(ss.str().c_str());
         }
 
+        return true;
+    }
+
+    static constexpr uint32 FACTION_ALDOR      = 932;
+    static constexpr uint32 FACTION_SCRYERS    = 934;
+    static constexpr uint32 FACTION_HONOR_HOLD = 946;
+    static constexpr uint32 FACTION_THRALLMAR  = 947;
+
+    // Aldor and Scryers are mutually exclusive: returns the opposing faction id, 0 for any other faction
+    static uint32 GetOpposingAldorScryersFaction(uint32 factionId)
+    {
+        if (factionId == FACTION_ALDOR)
+            return FACTION_SCRYERS;
+        if (factionId == FACTION_SCRYERS)
+            return FACTION_ALDOR;
+        return 0;
+    }
+
+    // Honor Hold is Alliance-only and Thrallmar Horde-only (the opposing side merely gets a hated
+    // base reputation slot): returns the team a faction is restricted to, TEAM_NEUTRAL if unrestricted
+    static TeamId GetRequiredRepTeam(uint32 factionId)
+    {
+        if (factionId == FACTION_HONOR_HOLD)
+            return TEAM_ALLIANCE;
+        if (factionId == FACTION_THRALLMAR)
+            return TEAM_HORDE;
+        return TEAM_NEUTRAL;
+    }
+
+    // Sets the reputation standing of a character (online or offline, identified by name)
+    // for the given faction to an absolute value, a "+delta" relative offset, or a rank name.
+    // Changes to Aldor/Scryers are mirrored onto the opposing faction by the applied delta.
+    // .character setreputation $playername #factionId #standing|+delta|rankName
+    static bool HandleCharacterSetReputationCommand(ChatHandler* handler, Optional<PlayerIdentifier> player, uint32 factionId, Variant<int32, std::string> rank)
+    {
+        if (!player)
+            player = PlayerIdentifier::FromTargetOrSelf(handler);
+
+        if (!player)
+        {
+            handler->SendErrorMessage(LANG_PLAYER_NOT_FOUND);
+            return false;
+        }
+
+        FactionEntry const* factionEntry = sFactionStore.LookupEntry(factionId);
+        if (!factionEntry || factionEntry->reputationListID < 0)
+        {
+            handler->SendErrorMessage(LANG_COMMAND_FACTION_UNKNOWN, factionId);
+            return false;
+        }
+
+        // resolve the target standing: absolute value, "+delta" (relative to current), or rank name
+        int32 amount = 0;
+        Optional<int32> delta;
+
+        if (rank.holds_alternative<std::string>())
+        {
+            std::string rankStr = rank.get<std::string>();
+
+            if (rankStr[0] == '+')
+            {
+                // relative mode: "+1000" adds 1000 to the current displayed reputation.
+                // resolved against the target's current value below; deliberately not using
+                // incremental SetOneFactionReputation so RATE_REPUTATION_GAIN is not applied
+                if (Optional<int32> parsed = Acore::StringTo<int32>(std::string_view(rankStr).substr(1), 10))
+                    delta = parsed;
+                else
+                {
+                    handler->SendErrorMessage(LANG_COMMAND_FACTION_INVPARAM, rankStr.c_str());
+                    return false;
+                }
+            }
+            else
+            {
+                std::wstring wrankStr;
+
+                if (!Utf8toWStr(rankStr, wrankStr))
+                    return false;
+
+                wstrToLower(wrankStr);
+
+                int32 r = 0;
+                amount = ReputationMgr::Reputation_Bottom;
+
+                for (; r < MAX_REPUTATION_RANK; ++r)
+                {
+                    std::string rankName = handler->GetAcoreString(ReputationRankStrIndex[r]);
+                    if (rankName.empty())
+                        continue;
+
+                    std::wstring wrank;
+                    if (!Utf8toWStr(rankName, wrank))
+                        continue;
+
+                    wstrToLower(wrank);
+
+                    if (wrank.substr(0, wrankStr.size()) == wrankStr)
+                        break;
+
+                    amount += ReputationMgr::PointsInRank[r];
+                }
+
+                if (r >= MAX_REPUTATION_RANK)
+                {
+                    handler->SendErrorMessage(LANG_COMMAND_FACTION_INVPARAM, rankStr.c_str());
+                    return false;
+                }
+            }
+        }
+        else
+            amount = rank.get<int32>();
+
+        if (!delta)
+            amount = std::clamp(amount, ReputationMgr::Reputation_Bottom, ReputationMgr::Reputation_Cap);
+
+        if (Player* target = player->GetConnectedPlayer())
+        {
+            // check online security
+            if (handler->HasLowerSecurity(target))
+                return false;
+
+            // Honor Hold is Alliance-only, Thrallmar Horde-only
+            if (TeamId requiredTeam = GetRequiredRepTeam(factionId); requiredTeam != TEAM_NEUTRAL && target->GetTeamId() != requiredTeam)
+            {
+                handler->PSendSysMessage("目标角色属于%s阵营，无法设置%s的声望。",
+                    requiredTeam == TEAM_ALLIANCE ? "部落" : "联盟", factionEntry->name[handler->GetSessionDbcLocale()]);
+                return false;
+            }
+
+            ReputationMgr& repMgr = target->GetReputationMgr();
+            int32 oldAmount = repMgr.GetReputation(factionEntry);
+
+            if (delta)
+                amount = int32(std::clamp<int64>(int64(oldAmount) + *delta,
+                    ReputationMgr::Reputation_Bottom, ReputationMgr::Reputation_Cap));
+
+            repMgr.SetOneFactionReputation(factionEntry, float(amount), false);
+            repMgr.SendState(repMgr.GetState(factionEntry));
+
+            // Aldor/Scryers are mutually exclusive: a change to one is mirrored onto the other
+            int64 appliedDelta = int64(amount) - oldAmount;
+            if (appliedDelta != 0)
+            {
+                if (FactionEntry const* opposingEntry = sFactionStore.LookupEntry(GetOpposingAldorScryersFaction(factionId)))
+                {
+                    int32 opposingAmount = int32(std::clamp<int64>(int64(repMgr.GetReputation(opposingEntry)) - appliedDelta,
+                        ReputationMgr::Reputation_Bottom, ReputationMgr::Reputation_Cap));
+                    repMgr.SetOneFactionReputation(opposingEntry, float(opposingAmount), false);
+                    repMgr.SendState(repMgr.GetState(opposingEntry));
+                    handler->PSendSysMessage(LANG_COMMAND_MODIFY_REP, opposingEntry->name[handler->GetSessionDbcLocale()],
+                        opposingEntry->ID, handler->playerLink(*player), opposingAmount);
+                }
+            }
+        }
+        else
+        {
+            // offline player: write character_reputation directly
+            ObjectGuid::LowType lowGuid = player->GetGUID().GetCounter();
+
+            QueryResult result = CharacterDatabase.Query("SELECT race, class FROM characters WHERE guid = {}", lowGuid);
+            if (!result)
+            {
+                handler->SendErrorMessage(LANG_PLAYER_NOT_FOUND);
+                return false;
+            }
+
+            uint8 race = (*result)[0].Get<uint8>();
+            uint8 pclass = (*result)[1].Get<uint8>();
+
+            // Honor Hold is Alliance-only, Thrallmar Horde-only
+            if (TeamId requiredTeam = GetRequiredRepTeam(factionId); requiredTeam != TEAM_NEUTRAL && Player::TeamIdForRace(race) != requiredTeam)
+            {
+                handler->PSendSysMessage("目标角色属于%s阵营，无法设置%s的声望。",
+                    requiredTeam == TEAM_ALLIANCE ? "部落" : "联盟", factionEntry->name[handler->GetSessionDbcLocale()]);
+                return false;
+            }
+
+            // base reputation and default flags for the character's race/class (mirrors ReputationMgr::GetBaseReputation)
+            auto getBaseData = [race, pclass](FactionEntry const* entry, int32& outBaseRep, uint32& outFlags)
+            {
+                outBaseRep = 0;
+                outFlags = FACTION_FLAG_VISIBLE;
+
+                if (race == 0 || pclass == 0)
+                    return;
+
+                uint32 raceMask = 1 << (race - 1);
+                uint32 classMask = 1 << (pclass - 1);
+
+                for (uint8 i = 0; i < 4; ++i)
+                {
+                    if ((entry->BaseRepRaceMask[i] & raceMask ||
+                            (entry->BaseRepRaceMask[i] == 0 && entry->BaseRepClassMask[i] != 0)) &&
+                        (entry->BaseRepClassMask[i] & classMask || entry->BaseRepClassMask[i] == 0))
+                    {
+                        outBaseRep = entry->BaseRepValue[i];
+                        outFlags = entry->ReputationFlags[i] | FACTION_FLAG_VISIBLE;
+                        break;
+                    }
+                }
+            };
+
+            // reads one character_reputation row: keeps existing flags when present, 0 standing when missing
+            auto loadStoredData = [lowGuid](uint32 repFactionId, uint32 defaultFlags, uint32& outFlags, int32& outStanding)
+            {
+                outFlags = defaultFlags;
+                outStanding = 0;
+                if (QueryResult repResult = CharacterDatabase.Query("SELECT flags, standing FROM character_reputation WHERE guid = {} AND faction = {}", lowGuid, repFactionId))
+                {
+                    outFlags = (*repResult)[0].Get<uint16>();
+                    outStanding = (*repResult)[1].Get<int32>();
+                }
+            };
+
+            // the database stores the standing without the race/class base reputation
+            auto saveStanding = [lowGuid](uint32 repFactionId, int32 displayed, int32 baseRep, uint32 flags)
+            {
+                CharacterDatabasePreparedStatement* stmt = CharacterDatabase.GetPreparedStatement(CHAR_DEL_CHAR_REPUTATION_BY_FACTION);
+                stmt->SetData(0, lowGuid);
+                stmt->SetData(1, uint16(repFactionId));
+                CharacterDatabase.Execute(stmt);
+
+                stmt = CharacterDatabase.GetPreparedStatement(CHAR_INS_CHAR_REPUTATION_BY_FACTION);
+                stmt->SetData(0, lowGuid);
+                stmt->SetData(1, uint16(repFactionId));
+                stmt->SetData(2, displayed - baseRep);
+                stmt->SetData(3, uint16(flags));
+                CharacterDatabase.Execute(stmt);
+            };
+
+            int32 baseRep;
+            uint32 defaultFlags;
+            getBaseData(factionEntry, baseRep, defaultFlags);
+
+            uint32 flags;
+            int32 storedStanding;
+            loadStoredData(factionId, defaultFlags, flags, storedStanding);
+
+            // current displayed value is baseRep + stored standing (0 when no row)
+            int32 oldAmount = baseRep + storedStanding;
+
+            if (delta)
+                amount = int32(std::clamp<int64>(int64(oldAmount) + *delta,
+                    ReputationMgr::Reputation_Bottom, ReputationMgr::Reputation_Cap));
+
+            saveStanding(factionId, amount, baseRep, flags);
+
+            // Aldor/Scryers are mutually exclusive: a change to one is mirrored onto the other
+            int64 appliedDelta = int64(amount) - oldAmount;
+            if (appliedDelta != 0)
+            {
+                if (FactionEntry const* opposingEntry = sFactionStore.LookupEntry(GetOpposingAldorScryersFaction(factionId)))
+                {
+                    int32 opposingBaseRep;
+                    uint32 opposingDefaultFlags;
+                    getBaseData(opposingEntry, opposingBaseRep, opposingDefaultFlags);
+
+                    uint32 opposingFlags;
+                    int32 opposingStored;
+                    loadStoredData(opposingEntry->ID, opposingDefaultFlags, opposingFlags, opposingStored);
+
+                    int32 opposingAmount = int32(std::clamp<int64>(int64(opposingBaseRep) + opposingStored - appliedDelta,
+                        ReputationMgr::Reputation_Bottom, ReputationMgr::Reputation_Cap));
+                    saveStanding(opposingEntry->ID, opposingAmount, opposingBaseRep, opposingFlags);
+
+                    handler->PSendSysMessage(LANG_COMMAND_MODIFY_REP, opposingEntry->name[handler->GetSessionDbcLocale()],
+                        opposingEntry->ID, handler->playerLink(*player), opposingAmount);
+                }
+            }
+        }
+
+        handler->PSendSysMessage(LANG_COMMAND_MODIFY_REP, factionEntry->name[handler->GetSessionDbcLocale()], factionId,
+                                 handler->playerLink(*player), amount);
         return true;
     }
 

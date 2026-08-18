@@ -1,0 +1,4 @@
+-- help text for `.character setreputation` (custom command, see cs_character.cpp)
+DELETE FROM `command` WHERE `name` = 'character setreputation';
+INSERT INTO `command` (`name`, `security`, `help`) VALUES
+('character setreputation', 2, 'Syntax: .character setreputation $playername #factionId #standing\r\n\r\nSets the reputation standing of $playername (online or offline) with faction #factionId to #standing.\r\n#standing: absolute value from -42000 to 42999, a relative offset like +1000 or +-500 (no reputation rate applied), or a rank name (hated, hostile, unfriendly, neutral, friendly, honored, revered, exalted).\r\nChanges to Aldor (932) or Scryers (934) are mirrored onto the opposing faction. Honor Hold (946) requires an Alliance character, Thrallmar (947) a Horde character.\r\nExample: .character setreputation Bob 932 friendly');

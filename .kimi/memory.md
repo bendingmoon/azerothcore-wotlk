@@ -6,6 +6,7 @@ This file is the curated index for Kimi Code CLI. Detailed feature memories live
 
 - **Server repo**: `D:\UnityWow\azerothcore\azerothcore-wotlk` (this repo)
 - **Client repo**: `D:\Unity\clientproj` (Unity + tolua/Lua hybrid)
+- **Client table data**: `D:\Unity\clientproj\Assets\artres\Resources\Wow\TableData\*.bytes` (FlatBuffers, int fields XOR 501319815; row classes in `HotUpdate/MoonClient/Table/WoW/Tables/`; parser: `var/parse_client_spelldbc.py`)
 - **Current branch**: `Playerbot`
 - **Key module**: `modules/mod-playerbots/`
 
@@ -49,6 +50,9 @@ This file is the curated index for Kimi Code CLI. Detailed feature memories live
 | [lfg-bot-corpse-pile-fix.md](lfg-bot-corpse-pile-fix.md) | 奥格尸体堆：副本战死 bot 被 OnRemoveMember 的 TeleportToEntryPoint（无死亡检查）拉回奥格、登出落库留 3 天；修复=清理登出前复活+清尸，尸体过期 3 天→2 小时（2026-08-15） |
 | [lfg-bot-refollow-after-master-death.md](lfg-bot-refollow-after-master-death.md) | 队长死一次后 bot 永不跟随：释放灵魂转发包给活 bot 上 -follow,+stay，恢复仅认 20 码内 CMSG_RECLAIM_CORPSE（被奶活/离远即永久卡死）；修复=CheckAndCleanup 1s 轮询主人复活即 +follow,-stay（2026-08-16） |
 | [lfg-bot-cleanup-during-combat-fix.md](lfg-bot-cleanup-during-combat-fix.md) | 城墙老三杀瓦兹德后 bot 战斗中消失：LFG 完成判定绑 17537 瓦兹德之死（纳杉还活着）→ FINISHED 即清 bot；修复=清理前检查队伍任一成员战斗中则跳过下秒重查（2026-08-16） |
+| [karazhan-chess-event-analysis.md](karazhan-chess-event-analysis.md) | 卡拉赞象棋全链路交接文档：11 项问题根因+双端修复全记录（服务端沉默双条件修复/客户端地面选点/相机观察/点选修复/Lua绑定注册等），含待验证清单与排障索引；实机验证未完成，待新会话继续（2026-08-18） |
+| [gm-command-character-setreputation.md](gm-command-character-setreputation.md) | GM 命令 .character setreputation（在线/离线按名设声望，RBAC 1005+pending SQL）：绝对值/+delta 精确增量（不走倍率）/等级名三写法、奥尔多932↔占星者934 互斥镜像、荣耀堡946/萨尔玛947 阵营硬编码校验（含为何不能通用 DBC 校验）、TBC 全阵营 ID 表、商城 PHP 对接写法；待重编译+导 SQL（2026-08-18） |
+| [raid-cd-display-analysis.md](raid-cd-display-analysis.md) | 副本CD面板：重复行=C#响应包单例复用+LoadData不清列表（已修 Clear）；无CD显示却进清空本=面板只发perm绑定但temp绑定持久化且参与路由（队长temp拖全队规则②），60s自动转正/CopyBinds传播/停机跨重置点/bot滞留场景；修复方向A-D待定（2026-08-18） |
 
 ## Memory Management Rule
 
