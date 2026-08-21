@@ -58,6 +58,13 @@ Completed 2026-07-14. Adds `AutoPilotTask::GRIND = 3` on top of the existing Aut
   Replaced with ACK-exclusion filtering; cancel is now deterministic. Details in
   auto-pilot.md (same-date entry).
 
+## Recent Fixes (2026-08-21)
+
+- **挂机结束后动不了**：与托管任务同根因——服务端微移动同步包把
+  `WMoveComponent.Enabled` 锁 false，退出后摇杆和取消包全被挡死。修复见
+  auto-pilot.md 同日条目（`OnServerControlEnd` + `StopAutoPilot` 无条件清理移动），
+  `IsAfkGrinding` setter 退出分支同样已接入。
+
 ## Usage
 
 ```bash

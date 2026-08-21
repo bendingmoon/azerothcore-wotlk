@@ -4447,6 +4447,36 @@ bool Unit::isInAccessiblePlaceFor(Creature const* c) const
     }
 }
 
+// A player hovering in the air (e.g. after dismounting a flying mount with a client that
+// does not simulate gravity) cannot be reached by ground-bound creatures. Such a target is
+// treated as unreachable, so the creature will eventually evade and regenerate its health.
+bool Unit::IsInAirOutOfMeleeReach(Creature const* c) const
+{
+    if (!c || c->CanFly() || !IsPlayer())
+        return false;
+
+    // falling units will get back in reach on their own, transports are handled elsewhere
+    if (IsFalling() || GetTransport())
+        return false;
+
+    float meleeRange = c->GetMeleeRange(this);
+
+    // cheap check first: only a target clearly above the creature can be out of its reach
+    if (GetPositionZ() - c->GetPositionZ() <= meleeRange)
+        return false;
+
+    // measure the height above the floor below (handles ledges, bridges and towers)
+    float groundZ = INVALID_HEIGHT;
+    float floorZ = GetMapWaterOrGroundLevel(GetPositionX(), GetPositionY(), GetPositionZ(), &groundZ);
+    if (groundZ <= INVALID_HEIGHT) // ground is below the default search distance
+        floorZ = groundZ = GetMapHeight(GetPositionX(), GetPositionY(), GetPositionZ(), true, MAX_FALL_DISTANCE);
+
+    if (groundZ <= INVALID_HEIGHT)
+        return false;
+
+    return GetPositionZ() - floorZ > meleeRange;
+}
+
 void Unit::ProcessPositionDataChanged(PositionFullTerrainStatus const& data)
 {
     WorldObject::ProcessPositionDataChanged(data);

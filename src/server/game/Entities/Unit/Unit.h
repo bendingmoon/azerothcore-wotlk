@@ -1994,6 +1994,7 @@ public:
     void SetFacingToObject(WorldObject* object, Milliseconds timed = 0ms);
 
     bool isInAccessiblePlaceFor(Creature const* c) const;
+    [[nodiscard]] bool IsInAirOutOfMeleeReach(Creature const* c) const;
     bool isInFrontInMap(Unit const* target, float distance, float arc = M_PI) const;
     bool isInBackInMap(Unit const* target, float distance, float arc = M_PI) const;
 

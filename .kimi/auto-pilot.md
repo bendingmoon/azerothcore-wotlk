@@ -269,6 +269,38 @@ Survivor). Neither killing (target unattackable) nor the use-item branch
 - **Known remaining gap (cancel path)**: no explicit CMSG cancel opcode and no cancel
   button in Lua UI; `.bot auto stop` is the only out-of-band stop.
 
+## Recent Fixes (2026-08-21)
+
+- **托管中卡死左右摇摆 + 取消后彻底动不了（两处根因，已修）**：
+  - *摇摆（服务端 AI）*：到 POI 后目标不可达（栅栏里/楼层错/mmap 无路）时，
+    `MoveWorldObjectTo` 每 1~5s 取新随机偏移点交替两侧 → 原地摇摆；45s 无进展切换
+    POI 后同一 POI 又中选，且每轮刷新 `lastReachPOI` 使 5 分钟 `poiStayTime` 兜底永远
+    不触发 → 无限循环。修复：`DoQuest.poiNoProgressCount` 统计连续无进展切换
+    （任何计功/目标完成清零，新任务随 `ChangeToDoQuest` 重建清零），满
+    `poiNoProgressGiveUpCount = 3`（~2:15 无计功）按不可达放弃
+    （`lowPriorityQuest` + `ChangeToIdle` → `StopAutoPilot(OTHER, "Quest abandoned by AI")`）。
+    途中卡死（`MoveFarTo` 90s 无 5yd 进展）真人不再 `TeleportTo` 到不可达点
+    （可能卡进模型），同样改为放弃任务；普通 bot 传送兜底不变。
+    文件：`NewRpgAction.cpp/.h`、`NewRpgBaseAction.cpp`、`NewRpgInfo.h`。
+  - *冻住（客户端主因）*：摇摆阶段服务端微移动同步包（`_syncToTargetDist ≤ 0.1f`）
+    把 `WMoveComponent.Enabled` 锁成 false（`WMoveComponent.cs` onSyncMoveEvent 的
+    ≤0.1m 分支），退出托管后组件被 Update 跳过 → 摇杆输入无人执行、`CostTime` 恒 0 →
+    `UpdateMove` 提前返回 → 0x524 手动取消包发不出去 → 服务端继续托管 → 彻底冻住只能
+    重登。修复：新增 `WMoveComponent.OnServerControlEnd()`（恢复 `Enabled=true` +
+    清残留移动目标/路径点，后者会致退出后"幽灵移动"到上个服务端目标点），两个 setter
+    退出分支调用；同时清 `InJumping`（托管中 `UpdateVertical`/`MoveModel` 落地检测被
+    旁路会锁存，摇杆 `fireMoveEvent` 门禁 `(!InJumping || IsFly)` 永远挡手动移动；
+    真在空中时站立下坠检测 2s 内自愈）。文件：`WMoveComponent.cs`、`WPlayer.cs`。
+  - *服务端放大因素*：`StopAutoPilot` 的移动清理原来被 `if (master->isMoving())`
+    门控（`PlayerbotMgr.cpp`）——击退 ACK 覆盖移动标志、定身中起 spline、追击生成器
+    残留都会让 `isMoving()` 为 false → 残留生成器继续驱动角色且 `VerifyMovementInfo`
+    拒收手动移动包。已改为无条件 `StopMoving()`（自身有 `Finalized()` 守卫）+
+    `MotionMaster::Clear()`。
+  - *已知残留（未修，影响小）*：取消触发的第一个手动移动包在 `OnPacketReceived` 钩子
+    触发 `StopAutoPilot` 之前先过 `HandleMovementOpcodes`，spline 未 finalize 时被
+    `VerifyMovementInfo` 静默丢弃——客户端修复后会持续发包，后续包正常，不值得动核心
+    收包顺序。
+
 - **Hosted real player auto-replied "Invite me to your group first"**: any whisper to a
   real player under auto-pilot / AFK grind was routed into the bot command pipeline by the
   whisper hook (`Playerbots.cpp`), and `PlayerbotSecurity::CheckLevelFor`

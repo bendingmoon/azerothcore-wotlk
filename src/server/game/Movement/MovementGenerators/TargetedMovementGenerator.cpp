@@ -290,7 +290,7 @@ bool ChaseMovementGenerator<T>::DoUpdate(T* owner, uint32 time_diff)
         if (owner->HasUnitState(UNIT_STATE_CHASE_MOVE) || !PositionOkay(owner, target, maxTarget, angle))
         {
             // can we get to the target?
-            if (cOwner && !target->isInAccessiblePlaceFor(cOwner))
+            if (cOwner && (!target->isInAccessiblePlaceFor(cOwner) || target->IsInAirOutOfMeleeReach(cOwner)))
             {
                 cOwner->SetCannotReachTarget(target->GetGUID());
                 cOwner->StopMoving();

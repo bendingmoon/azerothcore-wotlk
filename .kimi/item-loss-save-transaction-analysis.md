@@ -37,10 +37,14 @@
 - `DestroySoulShardAction::Execute`（`WarlockActions.cpp:192`）—— 销毁真人灵魂碎片
 - `OpenItemAction::Execute` / `UnlockItemAction::Execute`（item push result 触发，自动开容器/锁箱）
 
-**B. 裸 INSERT → REPLACE 幂等化 ×4**（`src/server/database/Database/Implementation/CharacterDatabase.cpp`）：
+**B. 裸 INSERT → REPLACE 幂等化 ×7**（`src/server/database/Database/Implementation/CharacterDatabase.cpp`）：
 
-- `:530` `character_spell`、`:569` `pet_spell_cooldown`、`:571` `pet_spell`、`:572` `pet_aura`
+- 首批（已上线，新日志 1062 归零已验证）：`:530` `character_spell`、`:569` `pet_spell_cooldown`、`:571` `pet_spell`、`:572` `pet_aura`
+- 扩展批（2026-08-21 二次，新日志实锤 `character_action` 1062 后追加）：`:514` `character_action`、`:528` `character_skills`、`:542` `character_talent`——至此玩家保存事务内无重复键引爆点
+- ~~`LoginDatabase.cpp:83` `realmcharacters` 改 INSERT IGNORE~~ **已按用户要求还原**（2026-08-21）：该语句是独立执行（`AccountMgr.cpp:73`，不在事务里），1062 纯属日志噪音无功能影响，还原零风险；保留 REPLACE 会被 IGNORE 掩盖其他错误的顾虑，尊重用户决定
+
 - 主键齐备，残留行变覆盖，5 只卡死宠物下次保存自愈，无需手工清库
+- 安全不用动的表（同事务先全删再全插）：`character_glyphs`、`character_queststatus_daily/weekly/monthly`、`character_aura`
 
 ## 待办（运维侧）
 
@@ -70,8 +74,17 @@
 2. 回调失败分支：LOG_ERROR 带 GUID；`FindConnectedPlayer` 在线则调 `MarkSaveDataDirtyForRetry()`——物品仅翻 `UNCHANGED→CHANGED`（跳过 ITEM_NEW/REMOVED，m_items[PLAYER_SLOTS_COUNT] 全槽+包内物品）+ `AchievementMgr::SetAllChanged()`；**不立即重存**（靠下次正常保存，无重试风暴）。
 3. `Pet::SavePetToDB` 两个提交点同样处理，失败重标 `MarkSpellsDirtyForSaveRetry()`（UNCHANGED→CHANGED，跳过 FAMILY）。
 4. 残留盲区（接受）：销毁物品 DELETE 丢失→复活（复制风险）、下线瞬间回调可能不触发、邮件/拍卖事务不在覆盖内。
+5. **覆盖范围补充（2026-08-21 拍卖行问题）**：`MailHandler.cpp:616`（取件）、`AuctionHouseMgr.cpp:558`（过期返还批处理）、`AuctionHouseHandler.cpp:329/403/585`（上架/竞拍）都是各自独立的 fire-and-forget 提交点，**回调加固若实施必须一并改造**，否则邮件/拍卖链仍然裸奔。
 
 影响评估结论：回调与物品包处理同线程上下文（世界线程），无新并发面；重写全部幂等；可逆性 100%（3 个调用点换回 `CommitTransaction` 即还原）。
+
+## 附：拍卖行"上架 20 下架变 11"排查（2026-08-21）
+
+主流程逐环核实**均无计数漏洞**：上架单事务（`AuctionHouseHandler.cpp:324-329`）；过期/取消返还批量事务（`AuctionHouseMgr.cpp:516-558`，注意 555-556 行在提交结果已知前就清了内存 map，事务丢则拍卖物品成孤儿，重启后从 auctionhouse 表恢复重发）；竞拍/一口价只能整组买（协议无数量字段，`:426-586`）；邮件取件总数全取或取不出、单事务（`MailHandler.cpp:510-622`）；本 fork 无 AhBot 购买逻辑（LootAction.cpp 里是注释死代码）。
+
+候选解释按序：① 取回/入包时保存事务被丢 → 内存/DB 发散 → 后续操作在中间态上落库（间歇性吻合，与本案同一根因）；② 感知误差（包里已有部分堆叠，取回合并显示 +11 增量；或 11+9 分组上架回来一组）；③ 客户端数量缓存。
+
+取证：`entities.player.auctionhouse` INFO 日志逐笔带数量（`created auction #N ... x20` / `Auction #N expired: ... x20`），对照实际投诉——日志 x20 但到手 11 → 邮件/取件环节（保存丢失）；日志已是 x11 → 上架环节。
 
 ## 相关文件
 
