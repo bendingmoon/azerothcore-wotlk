@@ -41,6 +41,12 @@ public:
                 case GO_FEL_IRON_CHEST_NORMAL:
                 case GO_FEL_IRON_CHECT_HEROIC:
                     felIronChestGUID = go->GetGUID();
+                    // Enforce loot gate server-side regardless of DB flags:
+                    // chest is only selectable after Vazruden is defeated
+                    if (GetBossState(DATA_VAZRUDEN) == DONE)
+                        go->RemoveGameObjectFlag(GO_FLAG_NOT_SELECTABLE);
+                    else
+                        go->SetGameObjectFlag(GO_FLAG_NOT_SELECTABLE);
                     break;
             }
         }

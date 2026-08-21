@@ -56,6 +56,7 @@ This file is the curated index for Kimi Code CLI. Detailed feature memories live
 | [raid-cd-display-analysis.md](raid-cd-display-analysis.md) | 副本CD面板：重复行=C#响应包单例复用+LoadData不清列表（已修 Clear）；无CD显示却进清空本=面板只发perm绑定但temp绑定持久化且参与路由（队长temp拖全队规则②）；已修 A′路由过滤（temp仅CanReset或队内有成员在图内才路由）+B击杀时清缺席者temp+C启动清理停机过期save+D客户端327确认框/715刷新（含tolua Wrap手动补绑定方法）；待编译+实机验证（2026-08-18） |
 | [blood-furnace-broggok-lever-fix.md](blood-furnace-broggok-lever-fix.md) | 鲜血熔炉老二栅栏打不开/BOSS免疫：根因=客户端 TouchObject GOOBER 白名单 Data2!=0 拦住拉杆181982(Data2=0)不发177；服务端事件链（拉杆→4波兽人→开栅栏+解免疫）完好；修复=客户端去掉 Data2!=0（2026-08-21） |
 | [m2-anim-hijack-repair-fix.md](m2-anim-hijack-repair-fix.md) | 以idle/持械姿势奔跑、宠物之眼宠物以idle跑：根因=移动动画只在SetMoving边沿触发一次，base层被一次性动作(PlayActionFullBody)抢走无人补回+被控单位双写入方打架；修复=默认状态机0.2s周期矫正(动作层在播让位)+possess被控单位自身状态机/SetMoving门控；M2Animator.cs是废代码，现用M2RuntimeAnimator（2026-08-21） |
+| [item-loss-save-transaction-analysis.md](item-loss-save-transaction-analysis.md) | 挂机装备消失成野数据+pet_spell 62万重复键：根因=死锁/回滚丢事务+组包即标已保存+character_inventory唯一键被REPLACE静默删行；已修=4个挂机IsRealPlayer门控+4条裸INSERT→REPLACE；待办=READ-COMMITTED/WorkerThreads=1/重编译；观察期2天后再定保存失败回调加固（方案已备）（2026-08-21） |
 
 ## Memory Management Rule
 

@@ -2039,6 +2039,10 @@ void Spell::SendLoot(ObjectGuid guid, LootType loottype)
                 player->GetName(), player->GetGUID().ToString(), gameObjTarget->GetGUID().ToString());
             return;
         }
+
+        // Prevent looting of non-selectable gameobjects via open lock spells (lockpicking, keys, seaforium)
+        if (gameObjTarget->HasGameObjectFlag(GO_FLAG_NOT_SELECTABLE))
+            return;
         // special case, already has GossipHello inside so return and avoid calling twice
         if (gameObjTarget->GetGoType() == GAMEOBJECT_TYPE_GOOBER)
         {
