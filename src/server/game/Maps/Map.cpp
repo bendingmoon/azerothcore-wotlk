@@ -2227,6 +2227,11 @@ void InstanceMap::PermBindAllPlayers()
         if (group)
             group->SetDifficultyChangePrevention(DIFFICULTY_PREVENTION_CHANGE_BOSS_KILLED);
     }
+
+    // players who are not inside the instance right now miss the permanent bind;
+    // drop their temporary binds so a stale temp bind cannot glue them (or a
+    // group they lead) to this (partially) cleared save
+    sInstanceSaveMgr->PlayerUnbindTempNotInInstance(save);
 }
 
 void InstanceMap::UnloadAll()

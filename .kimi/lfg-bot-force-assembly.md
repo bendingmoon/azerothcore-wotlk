@@ -51,7 +51,9 @@
   玩家 NONE（rolecheck/proposal 失败或被拒）→ 立即 teardown 不恢复队列；
   90s 看门狗（LFG_ASSEMBLY_TIMEOUT）→ teardown + 恢复 solo 队列。
 - 每次 teardown `m_assemblyFailures`+1；≥3（LFG_ASSEMBLY_MAX_FAILURES）停止 spawn，
-  玩家离开队列后重置。有失败记录的玩家跳过重排队后的 2 分钟延迟（不重复罚等）。
+  玩家离开队列后重置。（2026-08-19 起重置真正生效——此前重置分支对 teardown 后
+  脱离 assemblyPlayers 的玩家不可达，曾造成永久拉黑；见 lfg-assembly-failure-reset-fix.md）
+  有失败记录的玩家跳过重排队后的 2 分钟延迟（不重复罚等）。
 - bot 120s 停驻超时（LFG_BOT_PARK_TIMEOUT，有在途装配/已进 LFG 组时豁免）→ 清理腾位。
 - 装配期间玩家被真人匹配走（PROPOSAL/DUNGEON）→ bot 逐个清理退场。
 

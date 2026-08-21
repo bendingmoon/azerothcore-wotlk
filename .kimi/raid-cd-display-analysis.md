@@ -32,9 +32,19 @@
 
 客户端加剧因素：未实现 `SMSG_INSTANCE_LOCK_WARNING_QUERY`(327) 确认框（玩家不知情即被绑）、未注册 `SMSG_INSTANCE_SAVE_CREATED`(715) 刷新、"延长副本锁定"协议（CMSG_SET_SAVED_INSTANCE_EXTEND，服务端已实现 `CalendarHandler.cpp:786`）客户端未接线。
 
-## 候选修复方向（待用户选择）
+## 修复实施（2026-08-18，A′+B+C 服务端 + D 客户端全部完成）
 
-- A. 路由收紧：规则②/④ 对英雄/团队本只认 perm 绑定（注意别破坏"队友还在本里时重进"——在场者绑定仍路由）
-- B. 清理时机：boss 死 PermBindAllPlayers 时清掉不在图内玩家的 temp 绑定（最贴近官方语义）；和/或登录时清 temp
-- C. 启动补清：LoadResetTimes 清理停机期间过期的英雄 save
-- D. 客户端补协议：327 确认框 + 715 后刷新面板
+- **A′ 路由过滤**（`InstanceSaveMgr.cpp:871` `PlayerGetDestinationInstanceId`）：规则②队长绑定为 temp 时仅当 `save->CanReset()`（无击杀）或队伍有成员正在该副本内（新私有辅助 `GroupHasMemberInsideSave`，`InstanceSaveMgr.cpp:862`）才跟随，否则返回 0 开新本；规则④无队 temp 仅当 `CanReset()` 才复用。三个调用点（MapInstanced.cpp:141 主路由 / MapMgr.cpp:224 容量检查 / PlayerStorage.cpp:5199 登录重定位）均已评估无回归
+- **B 击杀清理**（`InstanceSaveMgr.cpp:792` 新方法 `PlayerUnbindTempNotInInstance`，调用点 `Map.cpp:2234` `PermBindAllPlayers` 末尾）：boss 死时把不在图内的 temp 绑定者解绑（含离线；按 `bind->save != save` 防误清新绑定）。PermBindAllPlayers 调用点：Unit.cpp:14255 + 多个团本脚本，语义一致
+- **C 启动清理**：`LoadResetTimes` 的 `t < now` 分支把过期 (map,difficulty)（按共享难度降档）记入新成员 `m_offlineExpiredResets`；`LoadInstanceSaves` 对命中的 save 镜像运行时重置：有 extended 绑定者保留 save（删非 extended 绑定+清 extended 标志），否则删 instance/character_instance/respawn/saved_data 行并跳过加载，最后补 corpse/characters 悬空引用清理
+- **D 客户端**（全部已接线并复查）：
+  - 327 确认框：`WInstanceLockWarningQueryResponse`（WPartyCommandResultResponse.cs:85）→ `WNetClient.cs:257` 注册 → `OnInstanceLockWarningQuery`（:3249）CallFunc → `TeamMgr.lua:1841 ShowInstanceLockWarning`（CommonUI.Dialog YES_NO 同款就位确认弹窗，"接受"/"离开副本"，Timer 每秒刷新倒计时，到期仅关窗不发包，`OnEnterScene` 切图关窗）→ 点按钮 `WNetClient:InstanceLockResponse(int)`（:2744）→ `InstanceLockResponseRequest`（319，WTeamHandlerRequest.cs:28，Append(byte)）
+  - 715 刷新：`WInstanceSaveCreatedResponse`（WPartyCommandResultResponse.cs:107）→ 注册 → `OnInstanceSaveCreated`（:3257）→ 现有 `RaidInfoRequest()` 重拉，面板经 SetRaidInfo→ON_RAID_INFO_UPDATE 自动刷新
+  - **tolua 绑定**：`MoonClient_WNetClientWrap.cs` 按方法逐个注册，新增方法必须手动补 `L.RegFunction("InstanceLockResponse", ...)`（:99）+ static wrapper（:1738 区域，int 参数用 `(int)LuaDLL.luaL_checknumber`）；EmmyLua 存根 `UnityLuaAPI/MoonClient_WNetClient.lua` 同步加。agent 初版漏了绑定，已补
+- **同类隐患未修**：`WLfgPlayerInfoPacket.RandomDungeons`/`LockedDungeons`（WPartyCommandResultResponse.cs:143+）同样"List 只 Add 不清"，用户未确认是否修
+
+## 待验证（无法离线确认）
+
+- 服务端未编译（按约定不构建）：改动文件 InstanceSaveMgr.h/cpp、Map.cpp
+- 客户端未编译：WPartyCommandResultResponse.cs、WTeamHandlerRequest.cs、WNetClient.cs、MoonClient_WNetClientWrap.cs、TeamMgr.lua；Lua 需重出字节码；两仓库均为 SVN 工作副本未提交
+- `CallFunc` 传 uint（WarningTime/CompletedEncounterMask）到 Lua 的封送需实机确认；`l_dlg.panel.TxtMsg.LabText` 字段存在性需实机确认

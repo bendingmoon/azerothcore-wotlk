@@ -357,6 +357,13 @@ void InstanceSaveMgr::LoadResetTimes()
             t = (t * DAY) / DAY;
             t += ((today - t) / period + 1) * period + diff;
             CharacterDatabase.DirectExecute("UPDATE instance_reset SET resettime = '{}' WHERE mapid = '{}' AND difficulty = '{}'", (uint32)t, mapid, difficulty);
+
+            // the scheduled reset passed while the server was offline; raid/heroic
+            // saves are stored with resettime = 0 in the db, so the expired-instance
+            // cleanup in LoadInstances() cannot catch them - mark this map/difficulty
+            // for LoadInstanceSaves (instance rows store the downscaled difficulty)
+            Difficulty saveDifficulty = IsSharedDifficultyMap(mapid) ? Difficulty(difficulty % 2) : difficulty;
+            m_offlineExpiredResets.insert(MAKE_PAIR32(mapid, saveDifficulty));
         }
 
         SetExtendedResetTimeFor(mapid, difficulty, t);
@@ -373,6 +380,8 @@ void InstanceSaveMgr::LoadResetTimes()
 
 void InstanceSaveMgr::LoadInstanceSaves()
 {
+    bool wipedSave = false;
+
     QueryResult result = CharacterDatabase.Query("SELECT id, map, resettime, difficulty, completedEncounters, data FROM instance ORDER BY id ASC");
     if (result)
     {
@@ -387,6 +396,28 @@ void InstanceSaveMgr::LoadInstanceSaves()
             uint32 completedEncounters = fields[4].Get<uint32>();
             std::string instanceData = fields[5].Get<std::string>();
 
+            // the global reset of this map/difficulty passed while the server was offline;
+            // mirror what the scheduled reset would have done to this save
+            if (m_offlineExpiredResets.find(MAKE_PAIR32(mapId, difficulty)) != m_offlineExpiredResets.end())
+            {
+                // saves with extended binders survive: drop the non-extended binds and clear the extended flags
+                if (QueryResult extended = CharacterDatabase.Query("SELECT 1 FROM character_instance WHERE instance = '{}' AND extended = 1 LIMIT 1", instanceId))
+                {
+                    CharacterDatabase.DirectExecute("DELETE FROM character_instance WHERE instance = '{}' AND extended = 0", instanceId);
+                    CharacterDatabase.DirectExecute("UPDATE character_instance SET extended = 0 WHERE instance = '{}'", instanceId);
+                }
+                else
+                {
+                    CharacterDatabase.DirectExecute("DELETE FROM character_instance WHERE instance = '{}'", instanceId);
+                    CharacterDatabase.DirectExecute("DELETE FROM instance WHERE id = '{}'", instanceId);
+                    CharacterDatabase.DirectExecute("DELETE FROM creature_respawn WHERE instanceId = '{}'", instanceId);
+                    CharacterDatabase.DirectExecute("DELETE FROM gameobject_respawn WHERE instanceId = '{}'", instanceId);
+                    DeleteInstanceSavedData(instanceId);
+                    wipedSave = true;
+                    continue;
+                }
+            }
+
             // Mark instance id as being used
             sMapMgr->RegisterInstanceId(instanceId);
 
@@ -400,6 +431,15 @@ void InstanceSaveMgr::LoadInstanceSaves()
             }
         } while (result->NextRow());
     }
+
+    if (wipedSave)
+    {
+        // clear references to the deleted saves
+        CharacterDatabase.DirectExecute("UPDATE corpse SET instanceId = 0 WHERE instanceId > 0 AND instanceId NOT IN (SELECT id FROM instance)");
+        CharacterDatabase.DirectExecute("UPDATE characters AS tmp LEFT JOIN instance ON tmp.instance_id = instance.id SET tmp.instance_id = 0 WHERE tmp.instance_id > 0 AND instance.id IS NULL");
+    }
+
+    m_offlineExpiredResets.clear();
 }
 
 void InstanceSaveMgr::LoadCharacterBinds()
@@ -749,6 +789,26 @@ void InstanceSaveMgr::PlayerUnbindInstanceNotExtended(ObjectGuid guid, uint32 ma
     }
 }
 
+void InstanceSaveMgr::PlayerUnbindTempNotInInstance(InstanceSave* save)
+{
+    // Called when a boss is killed: players holding only a temporary bind who are
+    // not inside the instance right now miss the permanent bind, and their stale
+    // temp bind must not glue them to this (partially) cleared save.
+    GuidList players = save->m_playerList; // copy, the list is modified while unbinding
+    for (ObjectGuid guid : players)
+    {
+        InstancePlayerBind* bind = PlayerGetBoundInstance(guid, save->GetMapId(), save->GetDifficulty());
+        if (!bind || bind->perm || bind->save != save)
+            continue;
+
+        Player* player = ObjectAccessor::FindConnectedPlayer(guid);
+        if (player && player->GetMapId() == save->GetMapId() && player->GetInstanceId() == save->GetInstanceId())
+            continue;
+
+        PlayerUnbindInstance(guid, save->GetMapId(), save->GetDifficulty(), true, player);
+    }
+}
+
 InstancePlayerBind* InstanceSaveMgr::PlayerGetBoundInstance(ObjectGuid guid, uint32 mapid, Difficulty difficulty)
 {
     Difficulty difficulty_fixed = ( IsSharedDifficultyMap(mapid) ? Difficulty(difficulty % 2) : difficulty);
@@ -799,6 +859,15 @@ InstanceSave* InstanceSaveMgr::PlayerGetInstanceSave(ObjectGuid guid, uint32 map
     return (pBind ? pBind->save : nullptr);
 }
 
+bool InstanceSaveMgr::GroupHasMemberInsideSave(Group* group, InstanceSave* save) const
+{
+    for (Group::member_citerator itr = group->GetMemberSlots().begin(); itr != group->GetMemberSlots().end(); ++itr)
+        if (Player* member = ObjectAccessor::FindConnectedPlayer(itr->guid))
+            if (member->GetMapId() == save->GetMapId() && member->GetInstanceId() == save->GetInstanceId())
+                return true;
+    return false;
+}
+
 uint32 InstanceSaveMgr::PlayerGetDestinationInstanceId(Player* player, uint32 mapid, Difficulty difficulty)
 {
     // returning 0 means a new instance will be created
@@ -810,10 +879,20 @@ uint32 InstanceSaveMgr::PlayerGetDestinationInstanceId(Player* player, uint32 ma
     if (Group* g = player->GetGroup())
     {
         if (InstancePlayerBind* ilb = PlayerGetBoundInstance(g->GetLeaderGUID(), mapid, difficulty)) // 2. leader temp/perm
-            return ilb->save->GetInstanceId();
+        {
+            // Follow the leader's non-perm bind only while the save is still unsullied
+            // (no boss killed yet) or the group is actually playing inside it.
+            // A stale temp bind must not drag the group into a cleared instance.
+            if (ilb->perm || ilb->save->CanReset() || GroupHasMemberInsideSave(g, ilb->save))
+                return ilb->save->GetInstanceId();
+            return 0;
+        }
         return 0; // 3. in group, no leader bind
     }
-    return ipb ? ipb->save->GetInstanceId() : 0; // 4. self temp
+    // 4. no group: follow own non-perm bind only while the save is still unsullied
+    if (ipb && ipb->save->CanReset())
+        return ipb->save->GetInstanceId();
+    return 0;
 }
 
 void InstanceSaveMgr::CopyBinds(ObjectGuid from, ObjectGuid to, Player* toPlr)

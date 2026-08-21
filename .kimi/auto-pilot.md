@@ -240,6 +240,35 @@ Survivor). Neither killing (target unattackable) nor the use-item branch
   but idle (grind-center map check rejects all targets); first manual movement now
   cancels it reliably. Auto-stop on map change not implemented (optional improvement).
 
+## Recent Fixes (2026-08-19)
+
+- **Character frozen after auto-pilot ended while mounted**: repro was AI auto-mounts
+  during auto-quest → AI abandons quest (`StopAutoPilot(OTHER, "Quest abandoned by AI")`
+  — stop packet arrived and client state was cleaned correctly) → character cannot move
+  at all. Root cause: `WPlayer.IsAutoPilot`/`IsAfkGrinding` setters call
+  `SetControllerEnable(!value)` unconditionally, so the stop re-enabled the rider's own
+  CharacterController **while still mounted**. The mount system owns that controller for
+  the whole ride (disabled in `TryAttachDriver`, WVehicleControl.cs:470; restored only on
+  dismount in `clearVehicle`, :834) and mounted movement drives the mount's controller
+  (`MoveModel(VehicleOrModel=mount)`, WEntity.cs:432/2388). The rider's re-enabled
+  capsule sits at the saddle bone inside the mount's collision volume and blocks the
+  mount's `CharacterController.Move()` → total freeze; server side is unaffected
+  (movement packets are never echoed to the mover). Self-recovery: dismount or relog.
+- **Fix (client, `D:\Unity\clientproj`)**: both setters now skip `SetControllerEnable`
+  when `IsRideAnyVehicle || IsRidePubVehicle` — while mounted the controller state
+  belongs to the vehicle system. Safe symmetrically: entering auto-pilot mounted is a
+  no-op (already disabled by mount); if the AI dismounts mid-autopilot, `clearVehicle`
+  re-enables and the manual `MoveModel` path is unused while auto-pilot is active anyway.
+- **Fixed (server)**: manual-movement detection in `PlayerbotMgr::HandleMasterIncomingPacket`
+  only covered 0x0B5–0x0F7, but the mobile client's joystick-forward packet is the custom
+  `MSG_MOBILE_MOVE_START_FORWARD = 0x524` (Opcodes.h:1346) — invisible to the check, so
+  pushing the stick forward never cancelled (cancel relied on MSG_MOVE_STOP/HEARTBEAT
+  leaking through). The range check now also accepts `MSG_MOBILE_MOVE_START_FORWARD`;
+  it is only sent from manual input (client suppresses it while server-controlled), so
+  no ACK-style exclusion is needed for it.
+- **Known remaining gap (cancel path)**: no explicit CMSG cancel opcode and no cancel
+  button in Lua UI; `.bot auto stop` is the only out-of-band stop.
+
 - **Hosted real player auto-replied "Invite me to your group first"**: any whisper to a
   real player under auto-pilot / AFK grind was routed into the bot command pipeline by the
   whisper hook (`Playerbots.cpp`), and `PlayerbotSecurity::CheckLevelFor`

@@ -27,6 +27,7 @@
 #include <map>
 #include <mutex>
 #include <unordered_map>
+#include <unordered_set>
 
 struct InstanceTemplate;
 struct MapEntry;
@@ -173,6 +174,7 @@ public:
     InstancePlayerBind* PlayerBindToInstance(ObjectGuid guid, InstanceSave* save, bool permanent, Player* player = nullptr);
     void PlayerUnbindInstance(ObjectGuid guid, uint32 mapid, Difficulty difficulty, bool deleteFromDB, Player* player = nullptr);
     void PlayerUnbindInstanceNotExtended(ObjectGuid guid, uint32 mapid, Difficulty difficulty, Player* player = nullptr);
+    void PlayerUnbindTempNotInInstance(InstanceSave* save);
     InstancePlayerBind* PlayerGetBoundInstance(ObjectGuid guid, uint32 mapid, Difficulty difficulty);
     bool PlayerIsPermBoundToInstance(ObjectGuid guid, uint32 mapid, Difficulty difficulty);
     BoundInstancesMap const& PlayerGetBoundInstances(ObjectGuid guid, Difficulty difficulty);
@@ -192,11 +194,14 @@ protected:
 private:
     void _ResetOrWarnAll(uint32 mapid, Difficulty difficulty, bool warn, time_t resetTime);
     void _ResetSave(InstanceSaveHashMap::iterator& itr);
+    bool GroupHasMemberInsideSave(Group* group, InstanceSave* save) const;
     bool lock_instLists{false};
     InstanceSaveHashMap m_instanceSaveById;
     ResetTimeByMapDifficultyMap m_resetTimeByMapDifficulty;
     ResetTimeByMapDifficultyMap m_resetExtendedTimeByMapDifficulty;
     ResetTimeQueue m_resetTimeQueue;
+    // PAIR32(map, difficulty) whose scheduled reset passed while the server was offline
+    std::unordered_set<uint32> m_offlineExpiredResets;
 };
 
 #define sInstanceSaveMgr InstanceSaveMgr::instance()

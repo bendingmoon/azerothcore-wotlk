@@ -19,6 +19,9 @@
 | `data/sql/custom/db_world/tbc_remove_wotlk_pvp.sql` | **移除 WLK 80 级 PvP 装备售卖**：1062 件 S5~S8 角斗士全系 + Titan-Forged（2026-07-28 追加；用户反馈加基森商人仍卖 80 级装备。只删 npc_vendor 记录，item_template 保留；game_event_npc_vendor 已确认无相关） |
 | `data/sql/custom/db_world/tbc_gadgetzan_arena_vendors.sql` | **加基森 S1~S3 商人补货**（2026-07-28 追加）：Ecton(见习)→S1、Argex(老兵)→S2 荣誉+牌子（S1/S2 荣誉价格体系相同：头胸腿14500+30牌、肩11250+20AB、手10500+20AV、盾15000+20EotS、双手27000+40AV、法系主手25200/物理18000+20EotS、副手9000、投掷/魔杖/圣物8000+10EotS，cost ID 10040-10050）；Evee→S3 竞技场点数（沿用 10020-10028 桶）。每个 NPC 3 个同名人（33915-33941）全部补齐，共 1113 行。S4 由 Vixton 20278 原样售卖 |
 | `data/sql/custom/db_world/tbc_other_arena_vendors.sql` | **其他竞技场商人补货**（2026-07-28 追加，生成脚本 `var/gen_area52.py`，分析 `var/arena_vendor_analysis.txt`）：52区 Leeni(见习)→S1、Kezzik(老兵)→S2、Big Zokk→S3、Grex(武器)→S4 武器，加基森 Blazzek(武器)→S4 武器（49 件，桶 10005-10010）。共 1407 行。已确认无需改动：鲜血之环 Meminnie(S3)/Frixee(S4)、试炼之环 Grikkin(S4)、沙塔斯 Drelik/Drolig(S4)。达拉然商人全部跳过（70 级不可达） |
+| `data/sql/custom/db_world/tbc_close_p6_badge_vendors.sql` | **关闭 P6（2.4 太阳井阶段）公正徽章兑换**（2026-08-19）：删铁匠霍尔萨（25046，奎岛阳湾军械库 guid 93964，货挂 game_event 109）+ 安维赫（27667，沙塔斯）各 57 件 ilvl 141-146 牌子装；只删售货记录，NPC 保留。P6 开放时导入同目录 `tbc_restore_p6_badge_vendors.sql` 恢复（幂等） |
+| `data/sql/custom/db_world/tbc_close_badge_vendors.sql` | **关闭全部剩余公正徽章兑换**（2026-08-19，同日修订：吉尔拉斯 P1 段保留）：吉尔拉斯 G'eras（18525，沙塔斯）删 P4 段 82 件（2.3 牌子装 ilvl 128-136）+ 源生虚空(23572)/虚空漩涡(30183)（2.4 才追加的徽章材料），**保留 P1 段装备 53 件**（2.0 原版 ilvl ≤115，用户要求）；凯里 Kayri（26089，奎岛）删 45 件徽章换老兵（cost 1015/2347），她另 45 件守备官是太阳井 T6 代币兑换（2320-2328，与瑟雷敏斯 25976 的 T6 同号）故保留；昂图沃（27666）+ 夏尼（25950，奎岛 guid 94386，event 110）各删 6 颗徽章史诗宝石（cost 1642），金币图鉴保留。恢复导 `tbc_restore_badge_vendors.sql`（全量恢复，再按需重跑关闭文件的部分语句）。牌子装阶段对照：P1=ilvl ≤115（2.0）、P4=ilvl 128-136（2.3）、P6=ilvl 141-146（2.4）。团本代币兑换（T4 20613/20616、T5 21905/21906、T6 23381/25976、太阳之尘 25977、代币换 PvP 26090/26091/26092）属团本奖励循环，**有意保留** |
+| `data/sql/custom/db_world/tbc_remove_wotlk_emblem_vendors.sql` | **移除 WLK 纹章/代币兑换装备商**（2026-08-19）：达拉然各级纹章军需官与护甲/珠宝纹章商、T9/T10 职业护甲商、银色锦标赛军需官（含传家宝）、冬拥湖、风险硬币、传家宝商、北风苔原蚌壳商（25206，ilvl 138-145 可被 70 级获取），共 82 个 NPC 删 ExtendedCost>0 行（4959 行），金币货保留。恢复导 `tbc_restore_wotlk_emblem_vendors.sql`。注意：WLK **竞技场**商人（31863/32356/33915-33941/34036-34095 等）不在此文件，由 `tbc_remove_wotlk_pvp.sql` 覆盖 |
 | `var/gen_tbc_pvp2.py` | 生成脚本（Python 2.7，调价格/等级后重跑即可） |
 | `var/tmp_ipp.sql` | mod-individual-progression 的荣誉价格原始数据（生成脚本输入） |
 | `var/tmp_rows.txt` | 从基础库 `item_template.sql` 提取的 S2/S3/S4 装备行（生成脚本输入） |
@@ -115,4 +118,5 @@ mysql acore_world < data/sql/custom/db_world/tbc_remove_wotlk_pvp.sql
 - T6/T5/T4 代币换 S3/S2/S1 的兑换商（奎岛 Karynna 等）未动，属 2.4 原版行为。
 - 加基森 Ecton/Evee 身上残留的 1 件 "Commendation of Bravery"（WotLK 物品）未删，无害；如需纯净可删。
 - 只卖 WLK 装备的 NPC（如 Big Zokk Torquewrench）清货后商店为空，属预期；如需隐藏清 npcflag vendor 位(128)。
-- 达拉然牌子 PvE 商人（31579/31580 等，80 级英雄纹章装备）不在范围内，需要时另行处理。
+- ~~达拉然牌子 PvE 商人（31579/31580 等，80 级英雄纹章装备）不在范围内，需要时另行处理。~~ 已由 `tbc_remove_wotlk_emblem_vendors.sql` 解决（2026-08-19），含 T9/T10/锦标赛/冬拥湖/传家宝/蚌壳商，共 4959 行。
+- ⚠️ **2026-08-19 发现**：本机 `acore_world` 中没有 2026-07-28 那 4 个 SQL 的任何痕迹（自定义 ExtendedCost 10000+ 段 0 条、ilvl≥200 在售 8471 行），该库疑似重建过。用户称线上库已导入过——**若线上就是本机这个库，需重导 4 个 PvP SQL**。本次两个新 SQL（徽章关闭 + WLK 纹章商移除）已导入本机 `acore_world`，线上库若非本机需同步导入。

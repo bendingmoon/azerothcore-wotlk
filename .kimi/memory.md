@@ -6,7 +6,7 @@ This file is the curated index for Kimi Code CLI. Detailed feature memories live
 
 - **Server repo**: `D:\UnityWow\azerothcore\azerothcore-wotlk` (this repo)
 - **Client repo**: `D:\Unity\clientproj` (Unity + tolua/Lua hybrid)
-- **Client table data**: `D:\Unity\clientproj\Assets\artres\Resources\Wow\TableData\*.bytes` (FlatBuffers, int fields XOR 501319815; row classes in `HotUpdate/MoonClient/Table/WoW/Tables/`; parser: `var/parse_client_spelldbc.py`)
+- **Client table data**: `D:\Unity\clientproj\Assets\artres\Resources\Wow\TableData\*.bytes` (FlatBuffers, **each table has its own XOR key** via `enum eCrypt` in the row class; row classes in `HotUpdate/MoonClient/Table/WoW/Tables/`; multi-table checker `var/check_chess_client_tables.py`. WARNING: `SpellDbc.bytes` is a 4523-row dead table with zero consumers — the real full tables are `SpellWoW.bytes` (49387 rows, text fields), `SpellMiscWoW`, `SpellEffectWoW`, `SpellRangeWoW`, `SpellNameWoW` etc.)
 - **Current branch**: `Playerbot`
 - **Key module**: `modules/mod-playerbots/`
 
@@ -30,6 +30,7 @@ This file is the curated index for Kimi Code CLI. Detailed feature memories live
 | [lfg-solo-group-disband.md](lfg-solo-group-disband.md) | 随机本掉线重登后不显示进入副本+退不出队列：单人 LFG 组存活 → 0 成员 GROUP_LIST 被前端误判解散 → 状态死锁；修复=RemoveMember 剩 1 人时按"最后成员"条件解散（在线在副本里则保留）+ 客户端 OnGroupList 用 LeaderGuid 区分单人 LFG 队伍与真解散（2026-08-13） |
 | [lfg-bot-groupless-cleanup.md](lfg-bot-groupless-cleanup.md) | LFG bot 掉出队伍立即清理：wasGrouped 标记区分"进过组又掉出来"与"停驻/池排队本来无组"，前者轮询即清不再等超时（2026-08-13） |
 | [lfg-assembly-combat-gate.md](lfg-assembly-combat-gate.md) | LFG 装配战斗门控：战斗中不 spawn/不装配（弹窗不撞战斗），300s 一轮×2 轮仍不脱战则 LeaveLfg 移出队列（无冷却光环）+系统消息；含官方口径对照（2026-08-15） |
+| [lfg-assembly-failure-reset-fix.md](lfg-assembly-failure-reset-fix.md) | LFG 排 2 小时配不上 bot 两静默根因：装配失败 3 次永久拉黑（重置分支对脱离 assemblyPlayers 的玩家不可达→改从 m_assemblyFailures 补来源）+ premade 队去重先于队长判定（队长晚登录即永不补位→去重改队长 claim）（2026-08-19） |
 | [lfg-bot-role-spec.md](lfg-bot-role-spec.md) | LFG 陪打 bot 按分配职责生成天赋：Randomize/InitTalentsTree 支持指定专精 + 职责→specno 映射（坦/奶/DPS 各归其位，装备/铭文/策略/职责应答自动传导）（2026-08-11） |
 | [lfg-leader-transfer-rules.md](lfg-leader-transfer-rules.md) | LFG 队伍队长规则：新钩子 OnPlayerbotCanChangeGroupLeader 禁止传队长给 bot（只拦手动）；OnChangeLeader 里 LFG 组传给真人时所有 bot 的 master 切新队长（2026-08-11） |
 | [death-state-sync-fix.md](death-state-sync-fix.md) | 死亡卡死/无灵魂状态/血条残留：前端死亡判断改 GHOST 标志驱动（活人 HP=1 不误判）+ Attr.IsDead 直接置位 + 事件兜底重发；playerbots 死后自动行为跳过真人（2026-07-25） |
@@ -50,9 +51,11 @@ This file is the curated index for Kimi Code CLI. Detailed feature memories live
 | [lfg-bot-corpse-pile-fix.md](lfg-bot-corpse-pile-fix.md) | 奥格尸体堆：副本战死 bot 被 OnRemoveMember 的 TeleportToEntryPoint（无死亡检查）拉回奥格、登出落库留 3 天；修复=清理登出前复活+清尸，尸体过期 3 天→2 小时（2026-08-15） |
 | [lfg-bot-refollow-after-master-death.md](lfg-bot-refollow-after-master-death.md) | 队长死一次后 bot 永不跟随：释放灵魂转发包给活 bot 上 -follow,+stay，恢复仅认 20 码内 CMSG_RECLAIM_CORPSE（被奶活/离远即永久卡死）；修复=CheckAndCleanup 1s 轮询主人复活即 +follow,-stay（2026-08-16） |
 | [lfg-bot-cleanup-during-combat-fix.md](lfg-bot-cleanup-during-combat-fix.md) | 城墙老三杀瓦兹德后 bot 战斗中消失：LFG 完成判定绑 17537 瓦兹德之死（纳杉还活着）→ FINISHED 即清 bot；修复=清理前检查队伍任一成员战斗中则跳过下秒重查（2026-08-16） |
-| [karazhan-chess-event-analysis.md](karazhan-chess-event-analysis.md) | 卡拉赞象棋全链路交接文档：11 项问题根因+双端修复全记录（服务端沉默双条件修复/客户端地面选点/相机观察/点选修复/Lua绑定注册等），含待验证清单与排障索引；实机验证未完成，待新会话继续（2026-08-18） |
+| [karazhan-chess-event-analysis.md](karazhan-chess-event-analysis.md) | 卡拉赞象棋 v2：方向=象棋/野兽之眼/心控统一"控制模式"主技能栏替换。已实现（纯客户端未实测）：DEST 协议补全（WPetCastSpellRequest）+ 控制模式状态机（WPlayerInfo.ControlMode.cs，宠条包+farsight+DISABLE_MOVE 幂等检测）+ 主栏换数据源/按钮路由/瞄准原点/范围圈挂被控体；数据层证零缺口；服务端零改动（用户指示）。含验收清单与遗留项（2026-08-20） |
 | [gm-command-character-setreputation.md](gm-command-character-setreputation.md) | GM 命令 .character setreputation（在线/离线按名设声望，RBAC 1005+pending SQL）：绝对值/+delta 精确增量（不走倍率）/等级名三写法、奥尔多932↔占星者934 互斥镜像、荣耀堡946/萨尔玛947 阵营硬编码校验（含为何不能通用 DBC 校验）、TBC 全阵营 ID 表、商城 PHP 对接写法；待重编译+导 SQL（2026-08-18） |
-| [raid-cd-display-analysis.md](raid-cd-display-analysis.md) | 副本CD面板：重复行=C#响应包单例复用+LoadData不清列表（已修 Clear）；无CD显示却进清空本=面板只发perm绑定但temp绑定持久化且参与路由（队长temp拖全队规则②），60s自动转正/CopyBinds传播/停机跨重置点/bot滞留场景；修复方向A-D待定（2026-08-18） |
+| [raid-cd-display-analysis.md](raid-cd-display-analysis.md) | 副本CD面板：重复行=C#响应包单例复用+LoadData不清列表（已修 Clear）；无CD显示却进清空本=面板只发perm绑定但temp绑定持久化且参与路由（队长temp拖全队规则②）；已修 A′路由过滤（temp仅CanReset或队内有成员在图内才路由）+B击杀时清缺席者temp+C启动清理停机过期save+D客户端327确认框/715刷新（含tolua Wrap手动补绑定方法）；待编译+实机验证（2026-08-18） |
+| [blood-furnace-broggok-lever-fix.md](blood-furnace-broggok-lever-fix.md) | 鲜血熔炉老二栅栏打不开/BOSS免疫：根因=客户端 TouchObject GOOBER 白名单 Data2!=0 拦住拉杆181982(Data2=0)不发177；服务端事件链（拉杆→4波兽人→开栅栏+解免疫）完好；修复=客户端去掉 Data2!=0（2026-08-21） |
+| [m2-anim-hijack-repair-fix.md](m2-anim-hijack-repair-fix.md) | 以idle/持械姿势奔跑、宠物之眼宠物以idle跑：根因=移动动画只在SetMoving边沿触发一次，base层被一次性动作(PlayActionFullBody)抢走无人补回+被控单位双写入方打架；修复=默认状态机0.2s周期矫正(动作层在播让位)+possess被控单位自身状态机/SetMoving门控；M2Animator.cs是废代码，现用M2RuntimeAnimator（2026-08-21） |
 
 ## Memory Management Rule
 
@@ -71,3 +74,5 @@ This keeps `memory.md` bounded and readable while allowing feature notes to grow
 - Prefer minimal changes and follow existing code style.
 - Server-side changes usually need corresponding Unity C# + Lua changes for mobile features.
 - Do not run full builds unless explicitly requested.
+- **客户端表排查教训（2026-08-20，象棋事件踩坑）**：判断"某技能在不在客户端表里"之前，必须先确认消费代码实际读哪张表（从消费方 `GetTableItem<T>` 反查类→文件映射），不能看到 `SpellDbc.bytes` 是子集就下结论——它是零消费方的死数据，真正的技能表 `SpellWoW.bytes`/`SpellMiscWoW` 等是全量的。v1 因此误判"象棋技能只能硬编码"，导致整个并行系统方向被否。通用验证工具：`var/check_chess_client_tables.py`。
+- 同理：world 库 `spell_dbc` 表（4491 行）只是覆盖/补充层，不是服务端法术真值（真值在二进制 DBC）。
