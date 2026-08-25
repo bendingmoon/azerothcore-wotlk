@@ -37,6 +37,7 @@ This file is the curated index for Kimi Code CLI. Detailed feature memories live
 | [death-release-stuck-fix.md](death-release-stuck-fix.md) | 死亡卡死防御性修复：IsDead setter 标志/清血条提前+全防护、UpdateAttrValue/EquipVisible 补 try-catch、GetUpdateValues 空 catch 加日志、Update() 每秒补弹释放框；Repop/SelfResurrect 加真人守卫（2026-07-29） |
 | [quest-state-refresh-fix.md](quest-state-refresh-fix.md) | 接任务后 TalkDlg2 选项不刷新/NPC 头顶标识不对：C# 接交任务后重拉 gossip + Lua GotoNpc 改为原地重建选项 + WNpcFxComponent 状态缓存同步（2026-07-26） |
 | [quest-giver-icon-missing-fix.md](quest-giver-icon-missing-fix.md) | NPC 该有感叹号却不显示：删掉单查回包 status==8 的 QUESTGIVER 旗标丢弃 + refreshNpcStatus 补 6/7/9 状态映射 + LoadingEnd 补发切图批量刷新（2026-08-14） |
+| [innkeeper-hearthstone-bind-fix.md](innkeeper-hearthstone-bind-fix.md) | 沙塔斯占星者/奥尔多旅店无法绑定炉石：npc_innkeeper 脚本菜单选项 Id 是顺序号+MenuId=0 → 本地表识别错位（回退菜单0把绑定误判成商人）+ 客户端无 SMSG_BINDER_CONFIRM handler 流程断死；修复=补确认 handler 自动回 CMSG_BINDER_ACTIVATE + 删菜单0回退 + 3286 回执当成功提示（2026-08-22） |
 | [remote-movement-sync.md](remote-movement-sync.md) | 远程玩家移动同步全套修复：航位推测+追赶加速+防倒退+追停朝向；官方端游发送端协议差异（STOP 残留标志/STOP_STRAFE 真停/SET_FACING 无标志/心跳稀疏）；待优化项（2026-07-27） |
 | [spell-fx-lifetime-fix.md](spell-fx-lifetime-fix.md) | 技能/buff/引导特效生命周期整体修复：自毁链收口 OwnerFxId、消退窗口防硬切、IsBullet 去重、死亡清理、引导特效绑定时长、WBuff 用错管理器泄漏（2026-07-27） |
 | [skill-cast-stuck-fix.md](skill-cast-stuck-fix.md) | 卡技能全链修复（纯前端）：群CD豁免无GCD技能、等待队列移动不清+过期、读条看门狗、_autoSkillId 精确吞包、_waitSkillId 自愈、排队高亮即时化 + 双端 CD 对齐 6 项（COOLDOWN_EVENT 反向/rec优先/类别扇出/GO起算/打断撤GCD/急速GCD）；含服务端技能与 CD 模型参考（2026-08-11） |
@@ -57,6 +58,9 @@ This file is the curated index for Kimi Code CLI. Detailed feature memories live
 | [blood-furnace-broggok-lever-fix.md](blood-furnace-broggok-lever-fix.md) | 鲜血熔炉老二栅栏打不开/BOSS免疫：根因=客户端 TouchObject GOOBER 白名单 Data2!=0 拦住拉杆181982(Data2=0)不发177；服务端事件链（拉杆→4波兽人→开栅栏+解免疫）完好；修复=客户端去掉 Data2!=0（2026-08-21） |
 | [m2-anim-hijack-repair-fix.md](m2-anim-hijack-repair-fix.md) | 以idle/持械姿势奔跑、宠物之眼宠物以idle跑+朝向卡死：根因=移动动画只在SetMoving边沿触发一次，base层被一次性动作(PlayActionFullBody)抢走无人补回+被控单位双写入方打架+自身LagSyncUpdate用残留服务端朝向每帧顶掉玩家驱动Forward(SetIsSyncPos只挡Position不挡Rotation)；修复=默认状态机0.2s周期矫正(动作层在播让位)+possess被控单位自身状态机/SetMoving/Update门控；M2Animator.cs是废代码，现用M2RuntimeAnimator（2026-08-21） |
 | [item-loss-save-transaction-analysis.md](item-loss-save-transaction-analysis.md) | 挂机装备消失成野数据+pet_spell 62万重复键：根因=WorkerThreads=12并发乱序+死锁丢事务+组包即标已保存+character_inventory唯一键被REPLACE静默删行；已修=4个挂机IsRealPlayer门控+7条裸INSERT→REPLACE；待办=WorkerThreads改回1/重编译；观察期2天后再定保存失败回调加固（方案已备）（2026-08-21） |
+| [teleport-ack-stuck-fix.md](teleport-ack-stuck-fix.md) | 移动同步永久冻结（本地正常、队友看角色钉在原地）：根因=传送信号量无超时，客户端近传送ACK被实体状态门控吞掉+远传送WORLDPORT_ACK加载链卡死漏发；修复=ACK与实体状态解耦+45s超时强发记账（2026-08-24） |
+| [mob-death-hp-bar-corpse-pose-fix.md](mob-death-hp-bar-corpse-pose-fix.md) | 怪物死亡卡血条（目标框不归0）+出副本再进尸体站立：根因=Update()的!IsDead门控吞掉最终HP=0推送+PlayLastFrame在动画未初始化时静默丢请求且回调毒化状态名致每秒兜底停试；修复=非玩家死亡放行最终推送+M2RuntimeAnimator登记pending由InitAnimator补放（2026-08-24） |
+| [mob-ranged-attack-anim-fix.md](mob-ranged-attack-anim-fix.md) | 弓箭怪全程站立射击（禁魔监狱20901 Shoot 22907）：主攻击是法术无普攻包+官方SpellVisual=0无视觉kit+"Skill"/"Singing"动画名不存在+弓分支限定AUTO_REPEAT；修复=OnSkillGo按SpellEquippedItems判定远程武器法术补播AttackBow+箭矢弹道（2026-08-24） |
 
 ## Memory Management Rule
 

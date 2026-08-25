@@ -7401,6 +7401,32 @@ void Player::_SaveInventory(CharacterDatabaseTransaction trans)
         return;
 
     ObjectGuid::LowType lowGuid = GetGUID().GetCounter();
+
+    // [OrphanProbe] Diagnostics for orphan item production (remove after diagnosis).
+    // A REPLACE INTO character_inventory (guid, bag, slot, item) silently DELETES the
+    // row of any different item currently occupying that (guid, bag, slot) position
+    // in the DB (UNIQUE KEY guid(bag,slot)). The evicted item keeps its item_instance
+    // row but loses its inventory link = orphan data. With reliable transactions this
+    // can only happen when memory and DB disagree about slot occupancy (an item was
+    // detached in memory without being marked for save). Log every such eviction.
+    std::map<uint32, ObjectGuid::LowType> dbSlotToItem;
+    if (QueryResult invPos = CharacterDatabase.Query("SELECT bag, slot, item FROM character_inventory WHERE guid = {}", lowGuid))
+    {
+        do
+        {
+            Field* posFields = invPos->Fetch();
+            uint32 posKey = (posFields[0].Get<uint32>() << 8) | posFields[1].Get<uint32>();
+            dbSlotToItem[posKey] = posFields[2].Get<uint32>();
+        } while (invPos->NextRow());
+    }
+
+    // Guids of items being saved in this transaction: if the evicted item is among
+    // them, this is a legit same-transaction swap (A->P2, B->P1), not an orphan.
+    std::set<ObjectGuid::LowType> queueItemGuids;
+    for (Item* queuedItem : m_itemUpdateQueue)
+        if (queuedItem)
+            queueItemGuids.insert(queuedItem->GetGUID().GetCounter());
+
     for (std::size_t i = 0; i < m_itemUpdateQueue.size(); ++i)
     {
         Item* item = m_itemUpdateQueue[i];
@@ -7426,6 +7452,19 @@ void Player::_SaveInventory(CharacterDatabaseTransaction trans)
                 stmt->SetData(1, item->GetSlot());
                 stmt->SetData(2, lowGuid);
                 trans->Append(stmt);
+
+                // [OrphanProbe] this delete targets a (bag, slot) position in the DB -
+                // if another item's row sits there, it gets deleted and becomes orphan data.
+                {
+                    uint32 delPosKey = (uint32(bagTestGUID) << 8) | item->GetSlot();
+                    auto delItr = dbSlotToItem.find(delPosKey);
+                    if (delItr != dbSlotToItem.end() && delItr->second != item->GetGUID().GetCounter() &&
+                        !queueItemGuids.count(delItr->second))
+                    {
+                        LOG_ERROR("entities.player", "[OrphanProbe] player {} ({}): position-error recovery deleting DB row at bag {} slot {} will remove item guid {} from inventory -> orphan data.",
+                                  GetName(), lowGuid, bagTestGUID, item->GetSlot(), delItr->second);
+                    }
+                }
 
                 RemoveTradeableItem(item); // pussywizard
                 RemoveEnchantmentDurationsReferences(item); // pussywizard
@@ -7453,6 +7492,17 @@ void Player::_SaveInventory(CharacterDatabaseTransaction trans)
         {
             case ITEM_NEW:
             case ITEM_CHANGED:
+            {
+                // [OrphanProbe] warn if this REPLACE will evict a different item's row
+                uint32 posKey = (uint32(bag_guid) << 8) | item->GetSlot();
+                auto posItr = dbSlotToItem.find(posKey);
+                if (posItr != dbSlotToItem.end() && posItr->second != item->GetGUID().GetCounter() &&
+                    !queueItemGuids.count(posItr->second) /* legit same-transaction swap, not an orphan */)
+                {
+                    LOG_ERROR("entities.player", "[OrphanProbe] player {} ({}): saving item guid {} (entry {}) to bag {} slot {} will silently evict item guid {} from that DB position -> orphan data. Investigate how the evicted item left memory without being saved.",
+                              GetName(), lowGuid, item->GetGUID().ToString(), item->GetEntry(), bag_guid, item->GetSlot(), posItr->second);
+                }
+
                 stmt = CharacterDatabase.GetPreparedStatement(CHAR_REP_INVENTORY_ITEM);
                 stmt->SetData(0, lowGuid);
                 stmt->SetData(1, bag_guid);
@@ -7460,6 +7510,7 @@ void Player::_SaveInventory(CharacterDatabaseTransaction trans)
                 stmt->SetData(3, item->GetGUID().GetCounter());
                 trans->Append(stmt);
                 break;
+            }
             case ITEM_REMOVED:
                 stmt = CharacterDatabase.GetPreparedStatement(CHAR_DEL_CHAR_INVENTORY_BY_ITEM);
                 stmt->SetData(0, item->GetGUID().GetCounter());

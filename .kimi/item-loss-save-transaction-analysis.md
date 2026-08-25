@@ -86,6 +86,36 @@
 
 取证：`entities.player.auctionhouse` INFO 日志逐笔带数量（`created auction #N ... x20` / `Auction #N expired: ... x20`），对照实际投诉——日志 x20 但到手 11 → 邮件/取件环节（保存丢失）；日志已是 x11 → 上架环节。
 
+## 第二阶段：修复后仍有新增（2026-08-24/25，进行中）
+
+**已确认事实**：
+
+- 修复后新日志（F:\wow\Errors.log）：`1213=0`、`Fatal=0`、`1062` 仅剩 35 条 realmcharacters（已还原的 INSERT 噪音，无害）——**事务通道已闭合**
+- 但昨天仍有 5 件道具变野数据（74480639 封印命运腰带、75553605 氪金宝箱、75656769 源生暗影、75857749 破损黑曜石棒、74131518 暗影微粒），玩家反馈与**切换双天赋**相关
+- "准野数据"查询（bag 指向无效背包的行）= **0** → 排除"死锁旧伤在登录时结账"
+- 移动端 3 个装备升级/突破/洗练 handler（`ItemHandler.cpp:949/1035/1226`）审计：薄封装不动物品位置，排除；客户端不主动换装备（无 CMSG_USE_EQUIPMENT_SET 发送方）；切天赋服务端只碰副手（AutoUnequipOffhandIfNeed，包满转邮件有兜底）
+
+**当前主嫌疑**：`RemoveItem` **只摘不标**（`PlayerStorage.cpp:2996-3067`，注释自证 "does not actually change the item"）——若某路径摘了物品既不存回也不销毁，DB 旧行成无主行，之后任意 REPLACE 撞到该 `(guid,bag,slot)` 唯一键即静默顶行 → 野数据。纯内存分歧，不需要死锁。
+
+**已部署诊断探针**（全部在 `src/server/game/Entities/Player/PlayerStorage.cpp`，确诊后搜 `[OrphanProbe]` 移除）：
+
+| 野数据产生路径 | 覆盖 | 位置 |
+|---|---|---|
+| REPLACE 唯一键顶行（内存/DB 位置分歧） | ✅ Probe A | `_SaveInventory` NEW/CHANGED 分支（含同事务正常换装误报抑制 queueItemGuids） |
+| 保存时位置校验分支按 (bag,slot) 删行 | ✅ Probe B | `_SaveInventory` 7446 分支（打出被删行上的物品 GUID） |
+| 登录时无效 bag 清理（6015/6028/6169/6184） | ✅ 核心原有 LOG_ERROR | 需确认 `entities.player` 路由进 Errors.log |
+| buyback 清理 | 不产野数据（item_instance 同删） | — |
+| AH/邮件/公会银行转移 | 事务化已验证 | — |
+| 商城 PHP 直写 | ⚠️ C++ 探不到 | 需运营侧自查 |
+
+探针开销：每次有变更的保存多一次主键 SELECT（~0.05ms）+ 异常时才打日志。
+
+**待办**：
+
+- [ ] 编译部署探针；出 `[OrphanProbe]` 日志后拿被驱逐物品 GUID 反推"是谁摘了它没存"
+- [ ] 检查线上日志配置：`entities.player` 是否路由进 Errors.log（`_LoadInventory` 的 6015/6028 清理日志目前不可见）
+- [ ] 排除商城 PHP 直写 `character_inventory`/`item_instance` 的可能（若有）
+
 ## 相关文件
 
 - `src/server/game/Entities/Player/PlayerStorage.cpp`（`_SaveInventory` 7338、`_LoadInventory` 5925、`SaveToDB` 7147）

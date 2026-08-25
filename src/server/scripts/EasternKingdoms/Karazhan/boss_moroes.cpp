@@ -201,31 +201,9 @@ struct boss_moroes : public BossAI
         return Acore::Containers::SelectRandomContainerElement(guestList);
     }
 
-    bool CheckGuestsInRoom()
-    {
-        bool guestsInRoom = true;
-        summons.DoForAllSummons([&guestsInRoom](WorldObject* summon)
-        {
-            Creature* creature = summon->ToCreature();
-            if (creature->IsAlive() &&
-                ((creature->GetPositionX() < -11028.f) || (creature->GetPositionY() < -1955.f))) // boundaries of the two doors
-            {
-                guestsInRoom = false;
-            }
-        });
-
-        return guestsInRoom;
-    }
-
     void UpdateAI(uint32 diff) override
     {
         scheduler.Update(diff);
-
-        if (!CheckGuestsInRoom())
-        {
-            EnterEvadeMode();
-            return;
-        }
 
         if (!UpdateVictim())
             return;
